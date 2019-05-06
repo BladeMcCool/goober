@@ -10,9 +10,10 @@ import (
 	"math/rand"
 	"os/user"
 	"path"
+	"sync"
 	"time"
 
-	"github.com/kr/pretty"
+	_ "github.com/kr/pretty"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -29,6 +30,7 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/gorilla/sessions"
+	"github.com/syntaqx/echo-middleware/requestid"
 )
 
 var sessStoar *sessions.CookieStore
@@ -103,7 +105,8 @@ func lookupInvoiceFromLND(rhash string) *lnrpc.Invoice {
 }
 
 type sessionManager struct {
-	RhashSettlements map[string]chan struct{}
+	RhashMu          sync.Mutex
+	RhashSettlements map[string](map[string]chan struct{})
 }
 
 func (sm *sessionManager) BotCheck(next http.Handler) http.Handler {
@@ -224,7 +227,8 @@ func (sm *sessionManager) GetRecaptchaScore(token string, ip string) float64 {
 }
 
 func (sm *sessionManager) MonitorInvoices() {
-	sm.RhashSettlements = map[string]chan struct{}{}
+	// sm.RhashSettlements = map[string]chan struct{}{}
+	sm.RhashSettlements = map[string](map[string]chan struct{}){}
 	ctx := context.Background()
 	log.Printf("MonitorInvoices startup")
 	in := &lnrpc.InvoiceSubscription{}
@@ -235,18 +239,36 @@ func (sm *sessionManager) MonitorInvoices() {
 	for {
 		wot, err := subscribeClient.Recv()
 		rhash := hex.EncodeToString(wot.RHash)
+		// log.Printf("MonitorInvoices: got invoice %# v", pretty.Formatter(wot))
+
 		if wot.State != lnrpc.Invoice_SETTLED {
 			continue
 		}
-		if sm.RhashSettlements[rhash] != nil {
+		log.Printf("MonitorInvoices: got invoice settlement for %s\n", rhash)
+
+		// if sm.RhashSettlements[rhash] == nil || len(sm.RhashSettlements[rhash]) == 0 {
+		// 	//a long polling channel reader would have created the channel about the invoice it was interested in knowing was paid. no channel, no interest.
+		// 	continue
+		// }
+		if sm.RhashSettlements[rhash] == nil {
+			log.Printf("MonitorInvoices: there is nothing defined under rhash settlements map for %s\n", rhash)
+			//a long polling channel reader would have created the channel about the invoice it was interested in knowing was paid. no channel, no interest.
 			continue
 		}
-		sm.RhashSettlements[rhash] = make(chan struct{}, 1)
-		sm.RhashSettlements[rhash] <- struct{}{}
+		// if len(sm.RhashSettlements[rhash]) > 0 {
+		// 	//hrm i dont think this can actually happen.
+		// 	continue
+		// }
+		// sm.RhashSettlements[rhash] = make(chan struct{}, 1)
+		log.Printf("MonitorInvoices: there are %d requests wanting to know about settlement of %s\n", len(sm.RhashSettlements[rhash]), rhash)
+		for reqId := range sm.RhashSettlements[rhash] {
+			sm.RhashSettlements[rhash][reqId] <- struct{}{}
+			log.Printf("MonitorInvoices: so, umm, we just put something in the channel for reqid %s to know about settlement of %s\n", reqId, rhash)
+		}
 		if err != nil {
 			panic(err)
 		}
-		log.Printf("MonitorInvoices: got invoice %# v", pretty.Formatter(wot))
+		// log.Printf("MonitorInvoices: got invoice %# v", pretty.Formatter(wot))
 	}
 
 }
@@ -323,9 +345,13 @@ func init() {
 	go sessMgr.MonitorInvoices()
 }
 
+var reqIdKey string
+
 func main() {
 
 	r := mux.NewRouter()
+	rid := requestid.New()
+	reqIdKey = rid.HeaderKey
 	// r.
 	_ = r
 	r.HandleFunc("/getInvoiceForm/", getInvoiceForm)
@@ -336,7 +362,7 @@ func main() {
 	// http.HandleFunc("/", sayHello)
 	// http.HandleFunc("/bye/", sayBye)
 	// if err := http.ListenAndServe(":8081", nil); err != nil {
-	if err := http.ListenAndServe(":8081", r); err != nil {
+	if err := http.ListenAndServe(":8081", rid.Handler(r)); err != nil {
 		panic(err)
 	}
 }
@@ -456,11 +482,23 @@ func getInvoice(w http.ResponseWriter, r *http.Request) {
 
 func lastInvoice(w http.ResponseWriter, r *http.Request) {
 	sess := sessMgr.GetSession(r)
-	payreq, ok := sess.Values["invoice-payreq"].(string)
-	if !ok {
+
+	payreq, payreqOk := sess.Values["invoice-payreq"].(string)
+	rhash, rhashOk := sess.Values["invoice-rhash"].(string)
+	log.Printf("lastInvoice %s: %# v\n", reqIdKey, r.Header.Get(reqIdKey))
+	if !payreqOk || !rhashOk {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
+
+	settled, expired := getInvoiceStatus(rhash)
+	if expired || settled {
+		payreq = ""
+		delete(sess.Values, "invoice-rhash")
+		delete(sess.Values, "invoice-payreq")
+		sess.Save(r, w)
+	}
+
 	w.Write([]byte(payreq))
 }
 
@@ -507,6 +545,7 @@ func pollInvoice(w http.ResponseWriter, r *http.Request) {
 
 func sendJSON(w http.ResponseWriter, value interface{}) {
 	rStr, _ := json.Marshal(value)
+	log.Printf("sendJSON: about to send this:\n%s\n", rStr)
 	w.Write(rStr)
 }
 
@@ -523,6 +562,7 @@ func longPollInvoice(w http.ResponseWriter, r *http.Request) {
 		log.Printf("longPollInvoice, no rhash from session or query :( ... just gonna return without doing anything. does it matter that i dont write anything first with w.Write?")
 		validRequest = false
 	}
+	reqId := r.Header.Get(reqIdKey)
 
 	result := map[string]bool{}
 	if !validRequest {
@@ -537,83 +577,104 @@ func longPollInvoice(w http.ResponseWriter, r *http.Request) {
 	)
 
 	ctx, cancel = context.WithTimeout(context.Background(), 299*time.Second)
-	resultChan := make(chan struct{})
+	// resultChan := make(chan struct{})
+	sessMgr.RhashMu.Lock()
+	if sessMgr.RhashSettlements[rhash] == nil {
+		// sessMgr.RhashSettlements[rhash] = make(chan struct{}, 1)
+		sessMgr.RhashSettlements[rhash] = map[string]chan struct{}{}
+	}
+	sessMgr.RhashSettlements[rhash][reqId] = make(chan struct{}, 1)
+	log.Printf("longPollInvoice: set up a spot for req %s to find out about settlement of %s\n", reqId, rhash)
+	sessMgr.RhashMu.Unlock()
+
+	// resultChan := sessMgr.RhashSettlements[rhash]
 	// var result string
 	defer cancel()
 	// go func(resultChan chan<- string) {
-	timedout := false
-	_ = timedout
+	// timedout := false
+	// _ = timedout
 	closedNotify := w.(http.CloseNotifier).CloseNotify()
-	go func() {
-		// time.Sleep(298 * time.Second)
-		// resultChan <- "test restuls"
-		attempt := 0
-		for {
-			attempt++
-			if timedout {
-				break
-			}
-			select {
-			case <-closedNotify:
-				// if httpClosed {
-				log.Printf("methinks client closed connection, so lets stop polling.")
-				resultChan <- struct{}{}
-				return
-				//break
-				// }
-			default:
-				//keep running the loop.
-			}
-			log.Printf("about to do attempt %d to get invoicestatus of rhash %s\n", attempt, rhash)
-			settled, expired := getInvoiceStatus(rhash)
+	// go func() {
+	// 	// time.Sleep(298 * time.Second)
+	// 	// resultChan <- "test restuls"
+	// 	attempt := 0
+	// 	for {
+	// 		attempt++
+	// 		if timedout {
+	// 			break
+	// 		}
+	// 		select {
+	// 		case <-closedNotify:
+	// 			// if httpClosed {
+	// 			log.Printf("methinks client closed connection, so lets stop polling.")
+	// 			resultChan <- struct{}{}
+	// 			return
+	// 			//break
+	// 			// }
+	// 		default:
+	// 			//keep running the loop.
+	// 		}
+	// 		log.Printf("about to do attempt %d to get invoicestatus of rhash %s\n", attempt, rhash)
+	// 		settled, expired := getInvoiceStatus(rhash)
 
-			if expired {
-				result["expired"] = true
-			}
-			if settled {
-				result["settled"] = true
-			}
+	// 		if expired {
+	// 			result["expired"] = true
+	// 		}
+	// 		if settled {
+	// 			result["settled"] = true
+	// 		}
 
-			if expired || settled {
-				// sess.Values["invoice-rhash"]
-				delete(sess.Values, "invoice-rhash")
-				delete(sess.Values, "invoice-payreq")
-				sess.Save(r, w)
+	// 		if expired || settled {
+	// 			// sess.Values["invoice-rhash"]
+	// 			delete(sess.Values, "invoice-rhash")
+	// 			delete(sess.Values, "invoice-payreq")
+	// 			sess.Save(r, w)
 
-				resultChan <- struct{}{}
-				return
-			}
+	// 			resultChan <- struct{}{}
+	// 			return
+	// 		}
 
-			time.Sleep(1 * time.Second)
-			// panic("reread this make sure it makes sense")
-		}
+	// 		time.Sleep(1 * time.Second)
+	// 		// panic("reread this make sure it makes sense")
+	// 	}
 
-		// }
+	// 	// }
 
-	}()
+	// }()
+
 	select {
 	case <-ctx.Done():
-		fmt.Println("sleepRandomContext: Time to return")
 		result["timedout"] = true
-		timedout = true
-	case <-resultChan:
+		log.Printf("longPollInvoice: reqId %s timed out with no settlement.\n", reqId)
+		// timedout = true
+		break
+	case <-sessMgr.RhashSettlements[rhash][reqId]:
 		result["gotresult"] = true
-
-		//This case is selected when processing finishes before the context is cancelled
-		fmt.Printf("got a result like: %#v\n", result)
+		result["settled"] = true
+		log.Printf("longPollInvoice: reqId %s got a result like: %#v\n", reqId, result)
+		break
+	case <-closedNotify:
+		log.Printf("longPollInvoice: reqId %s client closed connection:\n", reqId)
+		return
 	}
+	log.Printf("longPollInvoice: reqId %s got down here.", reqId)
 
 	sendJSON(w, result)
 }
+
+// 	w.WriteHeader(http.StatusNoContent)
+// 	w.WriteHeader(http.StatusNoContent)
+// 	w.WriteHeader(http.StatusNoContent)
+// func ded(w http.ResponseWriter) {
 
 // func ded(w http.ResponseWriter) {
 // 	fmt.Printf("mcFail\n")
 // 	w.WriteHeader(http.StatusNoContent)
 // 	w.Write([]byte("204 - T-gay"))
-// }
-
-// func sayBye(w http.ResponseWriter, r *http.Request) {
-// 	userSess, err := sessStoar.Get(r, "ghey-sess")
+// }v
+// func ded(w http.ResponseWriter) {
+// func ded(w http.ResponseWriter) {
+// func ded(w http.ResponseWriter) {
 // 	if err != nil {
 // 		panic("cant read session ... very gay.")
 // 	}
