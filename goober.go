@@ -1,39 +1,28 @@
 package main
 
 import (
-	"bytes"
+	_ "bytes"
 	"context"
 	"encoding/hex"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"math/rand"
-	"os/user"
-	"path"
-	"sync"
 	"time"
 
 	_ "github.com/kr/pretty"
 
-	"github.com/davecgh/go-spew/spew"
 	"github.com/lightningnetwork/lnd/lnrpc"
-	"github.com/lightningnetwork/lnd/macaroons"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
-	"gopkg.in/macaroon.v2"
 	"gopkg.in/yaml.v2"
 
 	"encoding/json"
-	"net"
 	"net/http"
-	"net/url"
 
 	"github.com/gorilla/mux"
-	"github.com/gorilla/sessions"
 	"github.com/syntaqx/echo-middleware/requestid"
 )
 
-var sessStoar *sessions.CookieStore
+// var sessStoar *sessions.CookieStore
 var recaptchaSecret, authKey, encryptKey string
 var letterRunes = []rune("01234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
@@ -67,282 +56,25 @@ func (c *conf) getConf() *conf {
 var myConf conf
 
 // var lnConn *grpc.ClientConn
-var lnClient lnrpc.LightningClient
 
-func getInvoiceFromLND(sats int64, memo string) *lnrpc.AddInvoiceResponse {
-	log.Printf("getInvoiceFromLND: sats %d, memo %s\n", sats, memo)
-	ctx := context.Background()
-	//--------------
-	// see example in https://github.com/michael1011/lightningtip/blob/master/backends/lnd.go
-	// also examples in https://github.com/lightningnetwork/lnd/blob/master/lnd_test.go
-	// var invoice *lnrpc.AddInvoiceResponse
-	addInvoiceResp, err := lnClient.AddInvoice(ctx, &lnrpc.Invoice{
-		Memo:   memo,
-		Value:  sats,
-		Expiry: 36000, //3600 is default.
-	})
-
-	if err != nil {
-		panic(err)
-	}
-	log.Printf("getInvoiceFromLND teh AddInvoiceResponse: %#v\n", addInvoiceResp)
-	// return invoice.PaymentRequest
-	return addInvoiceResp
-}
-func lookupInvoiceFromLND(rhash string) *lnrpc.Invoice {
-	ctx := context.Background()
-	invoice, _ := lnClient.LookupInvoice(ctx, &lnrpc.PaymentHash{RHashStr: rhash})
-	// if err.
-	// if err != nil {
-	// 	panic(err)
-	// }
-	if invoice == nil {
-		invoice = &lnrpc.Invoice{}
-	}
-	// log.Printf("lookupInvoiceFromLND: teh invoice: %#v\n", invoice)
-	// return invoice.PaymentRequest
-	return invoice
-}
-
-type sessionManager struct {
-	RhashMu          sync.Mutex
-	RhashSettlements map[string](map[string]chan struct{})
-}
-
-func (sm *sessionManager) BotCheck(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		//return result of previous check from this session, or perform the check if we havent.
-		userSess, err := sessStoar.Get(r, "ghey-sess")
-		if err != nil {
-			panic("cant read session ... very gay.")
-		}
-		token := r.URL.Query().Get("t")
-		ip, port, err := net.SplitHostPort(r.RemoteAddr)
-		if err != nil {
-			fmt.Printf("userip: %q is not IP:port\n", r.RemoteAddr)
-		}
-		_, _ = ip, port
-		_ = userSess
-		_ = token
-
-		// fmt.Printf("load3d this sess values: %#v\n", userSess.Values)
-
-		// token := r.Header.Get("X-Session-Token")
-
-		// if user, found := amw.tokenUsers[token]; found {
-		//     // We found the token in our map
-		//     log.Printf("Authenticated user %s\n", user)
-		//     next.ServeHTTP(w, r)
-		// } else {
-		//     http.Error(w, "Forbidden", http.StatusForbidden)
-		// }
-	})
-}
-
-func (sm *sessionManager) GetSession(r *http.Request) *sessions.Session {
-	userSess, err := sessStoar.Get(r, "chws-session")
-	if err != nil {
-		panic("cant read session ... very gay.")
-	}
-	return userSess
-}
-
-func (sm *sessionManager) UpdateRecaptchaScore(w http.ResponseWriter, r *http.Request) float64 {
-	userSess := sm.GetSession(r)
-	log.Printf("sessionManager Update: this sess values at start: %#v\n", userSess.Values)
-
-	token := r.URL.Query().Get("t")
-	ip := r.Header.Get("X-Real-Ip")
-	if ip == "" {
-		ip, _, _ = net.SplitHostPort(r.RemoteAddr)
-	}
-	if ip == "" {
-		ip = "1.2.3.4"
-	}
-
-	score := sm.GetRecaptchaScore(token, ip)
-	userSess.Values["recaptcha-score"] = score
-	userSess.Save(r, w)
-	return score
-}
-
-func (sm *sessionManager) GetRecaptchaScore(token string, ip string) float64 {
-	// fmt.Printf("said hello:'%s'\n", message)
-
-	aurl := "https://www.google.com/recaptcha/api/siteverify"
-	// fmt.Println("aURL:>", aurl)
-
-	// type verifyReq struct {
-	// 	Secret   string `json:"secret"`
-	// 	Response string `json:"response"`
-	// 	Remoteip string `json:"remoteip"`
-	// }
-	// vreq := &verifyReq{
-	// 	Secret:   "xxxxxx",
-	// 	Response: message,
-	// 	Remoteip: ip,
-	// }
-	// vreqSer, err := json.Marshal(vreq)
-	// if err != nil {
-	// 	fmt.Println(err.Error())
-	// }
-
-	//https://gist.github.com/slv922/fc88ca8ce52d2b46f27df95c86800b8b
-	form := url.Values{
-		"secret":   {myConf.RecaptchaSecret},
-		"response": {token},
-		"remoteip": {ip},
-	}
-	formEnc := form.Encode()
-	sendBody := bytes.NewBufferString(formEnc)
-	// fmt.Println("gonna send this: " + string(vreqSer))
-	fmt.Println("gonna send this: " + formEnc)
-
-	resp, err := http.Post(aurl, "application/x-www-form-urlencoded", sendBody)
-	if err != nil {
-		panic(err)
-	}
-	defer resp.Body.Close()
-
-	fmt.Println("response Status:", resp.Status)
-	fmt.Println("response Headers:", resp.Header)
-	body, _ := ioutil.ReadAll(resp.Body)
-	fmt.Println("response Body:", string(body))
-
-	//what did we get
-	var dat map[string]interface{}
-	if err := json.Unmarshal(body, &dat); err != nil {
-		panic(err)
-	}
-	score := 0.0
-	if dat["success"] == nil || dat["success"].(bool) != true {
-		fmt.Println("not success. problem talking to recaptcha??")
-		return score
-	}
-	if dat["score"] != nil {
-		score = dat["score"].(float64)
-		fmt.Printf("scoar lulz: %f\n", score)
-	}
-	return score
-}
-
-func (sm *sessionManager) MonitorInvoices() {
-	// sm.RhashSettlements = map[string]chan struct{}{}
-	sm.RhashSettlements = map[string](map[string]chan struct{}){}
-	ctx := context.Background()
-	log.Printf("MonitorInvoices startup")
-	in := &lnrpc.InvoiceSubscription{}
-	subscribeClient, err := lnClient.SubscribeInvoices(ctx, in)
-	if err != nil {
-		panic(err)
-	}
-	for {
-		wot, err := subscribeClient.Recv()
-		rhash := hex.EncodeToString(wot.RHash)
-		// log.Printf("MonitorInvoices: got invoice %# v", pretty.Formatter(wot))
-
-		if wot.State != lnrpc.Invoice_SETTLED {
-			continue
-		}
-		log.Printf("MonitorInvoices: got invoice settlement for %s\n", rhash)
-
-		// if sm.RhashSettlements[rhash] == nil || len(sm.RhashSettlements[rhash]) == 0 {
-		// 	//a long polling channel reader would have created the channel about the invoice it was interested in knowing was paid. no channel, no interest.
-		// 	continue
-		// }
-		if sm.RhashSettlements[rhash] == nil {
-			log.Printf("MonitorInvoices: there is nothing defined under rhash settlements map for %s\n", rhash)
-			//a long polling channel reader would have created the channel about the invoice it was interested in knowing was paid. no channel, no interest.
-			continue
-		}
-		// if len(sm.RhashSettlements[rhash]) > 0 {
-		// 	//hrm i dont think this can actually happen.
-		// 	continue
-		// }
-		// sm.RhashSettlements[rhash] = make(chan struct{}, 1)
-		log.Printf("MonitorInvoices: there are %d requests wanting to know about settlement of %s\n", len(sm.RhashSettlements[rhash]), rhash)
-		for reqId := range sm.RhashSettlements[rhash] {
-			sm.RhashSettlements[rhash][reqId] <- struct{}{}
-			log.Printf("MonitorInvoices: so, umm, we just put something in the channel for reqid %s to know about settlement of %s\n", reqId, rhash)
-		}
-		if err != nil {
-			panic(err)
-		}
-		// log.Printf("MonitorInvoices: got invoice %# v", pretty.Formatter(wot))
-	}
-
-}
-
-var sessMgr = &sessionManager{}
+// var sessMgr = &sessionManager{}
+var sessMgr *sessionManager
+var ln *lndHelper
+var captcha *recaptchaHelper
 
 func init() {
 	rand.Seed(time.Now().UnixNano())
 
 	myConf.getConf()
 	fmt.Printf("read config: %#vn\n", myConf)
-	sessStoar = sessions.NewCookieStore([]byte(myConf.SessAuthKey), []byte(myConf.SessCipher)) //these should be random and not saved in this file. oh well. see docs for more info.
+	sessMgr = NewSessMgr(&myConf)
+	ln = NewLNDHelper(&myConf)
+	captcha = NewRecaptchaHelper(&myConf, sessMgr)
 
-	usr, err := user.Current()
-	if err != nil {
-		fmt.Println("Cannot get current user:", err)
-		return
-	}
+	// sessStoar = sessions.NewCookieStore([]byte(myConf.SessAuthKey), []byte(myConf.SessCipher)) //these should be random and not saved in this file. oh well. see docs for more info.
 
-	fmt.Println("The user home directory: " + usr.HomeDir)
-	tlsCertPath := path.Join(usr.HomeDir, ".lnd/tls.cert")
-	macaroonPath := path.Join(usr.HomeDir, ".lnd/data/chain/bitcoin/mainnet/admin.macaroon")
-	tlsCreds, err := credentials.NewClientTLSFromFile(tlsCertPath, "")
-	if err != nil {
-		fmt.Println("Cannot get node tls credentials", err)
-		return
-	}
-
-	macaroonBytes, err := ioutil.ReadFile(macaroonPath)
-	if err != nil {
-		fmt.Println("Cannot read macaroon file", err)
-		return
-	}
-
-	mac := &macaroon.Macaroon{}
-	if err = mac.UnmarshalBinary(macaroonBytes); err != nil {
-		fmt.Println("Cannot unmarshal macaroon", err)
-		return
-	}
-
-	opts := []grpc.DialOption{
-		grpc.WithTransportCredentials(tlsCreds),
-		grpc.WithBlock(),
-		grpc.WithPerRPCCredentials(macaroons.NewMacaroonCredential(mac)),
-	}
-
-	conn, err := grpc.Dial("localhost:10009", opts...)
-	// lnConn = conn
-	if err != nil {
-		fmt.Println("cannot dial to lnd", err)
-		return
-	}
-	client := lnrpc.NewLightningClient(conn)
-	lnClient = client
-
-	ctx := context.Background()
-	getInfoResp, err := client.GetInfo(ctx, &lnrpc.GetInfoRequest{})
-	if err != nil {
-		fmt.Println("Cannot get info from node:", err)
-		return
-	}
-
-	var funBoi = &lnrpc.ListChannelsRequest{}
-	getChanResp, err := client.ListChannels(ctx, funBoi)
-	if err != nil {
-		fmt.Println("Cannot get chan list from node:", err)
-		return
-	}
-
-	fmt.Printf("%#v \n----\n", []*lnrpc.GetInfoResponse{getInfoResp, getInfoResp})
-	spew.Dump(getInfoResp)
-	spew.Dump(getChanResp)
-
-	go sessMgr.MonitorInvoices()
+	// lnClient = client
+	go ln.MonitorInvoices()
 }
 
 var reqIdKey string
@@ -365,22 +97,6 @@ func main() {
 	if err := http.ListenAndServe(":8081", rid.Handler(r)); err != nil {
 		panic(err)
 	}
-}
-
-func captchaScoreHighEnough(w http.ResponseWriter, r *http.Request) (bool, float64) {
-	score := sessMgr.UpdateRecaptchaScore(w, r)
-
-	// userSess.Values["homo-code"] = token
-	// userSess.Values["homo-factor"] = score
-	log.Printf("captcha score was %f\n", score)
-
-	if score < 0.5 {
-		// ded(w)
-		fmt.Printf("captcha score was too low.\n")
-		// w.WriteHeader(http.StatusNoContent)
-		return false, score
-	}
-	return true, score
 }
 
 func getInvoiceForm(w http.ResponseWriter, r *http.Request) {
@@ -419,6 +135,22 @@ func getInvoiceForm(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	// w.Write([]byte("u win, maybe this will be a bool that allows the page to show the form. or some secret we make and put in the session that we can check later. ur score was: " + fmt.Sprintf("%f", score)))
 	w.Write(resp)
+}
+
+func captchaScoreHighEnough(w http.ResponseWriter, r *http.Request) (bool, float64) {
+	score := captcha.UpdateRecaptchaScore(w, r)
+
+	// userSess.Values["homo-code"] = token
+	// userSess.Values["homo-factor"] = score
+	log.Printf("captcha score was %f\n", score)
+
+	if score < 0.5 {
+		// ded(w)
+		fmt.Printf("captcha score was too low.\n")
+		// w.WriteHeader(http.StatusNoContent)
+		return false, score
+	}
+	return true, score
 }
 
 func getInvoice(w http.ResponseWriter, r *http.Request) {
@@ -468,7 +200,7 @@ func getInvoice(w http.ResponseWriter, r *http.Request) {
 	if earmark != "" {
 		memo = memo + ", Earmarked for " + earmark
 	}
-	addInvoiceResp := getInvoiceFromLND(amount, memo)
+	addInvoiceResp := ln.GetInvoiceFromLND(amount, memo)
 	sess := sessMgr.GetSession(r)
 	sess.Values["invoice-payreq"] = addInvoiceResp.PaymentRequest
 	sess.Values["invoice-rhash"] = hex.EncodeToString(addInvoiceResp.RHash)
@@ -504,7 +236,7 @@ func lastInvoice(w http.ResponseWriter, r *http.Request) {
 
 func getInvoiceStatus(rhash string) (settled bool, expired bool) {
 
-	invoice := lookupInvoiceFromLND(rhash)
+	invoice := ln.LookupInvoiceFromLND(rhash)
 	settled = (invoice.GetState() == lnrpc.Invoice_SETTLED)
 	expired = false
 	nowsec := time.Now().UnixNano() / int64(time.Second)
@@ -578,14 +310,14 @@ func longPollInvoice(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel = context.WithTimeout(context.Background(), 299*time.Second)
 	// resultChan := make(chan struct{})
-	sessMgr.RhashMu.Lock()
-	if sessMgr.RhashSettlements[rhash] == nil {
-		// sessMgr.RhashSettlements[rhash] = make(chan struct{}, 1)
-		sessMgr.RhashSettlements[rhash] = map[string]chan struct{}{}
+	ln.RhashMu.Lock()
+	if ln.RhashSettlements[rhash] == nil {
+		// ln.RhashSettlements[rhash] = make(chan struct{}, 1)
+		ln.RhashSettlements[rhash] = map[string]chan struct{}{}
 	}
-	sessMgr.RhashSettlements[rhash][reqId] = make(chan struct{}, 1)
+	ln.RhashSettlements[rhash][reqId] = make(chan struct{}, 1)
 	log.Printf("longPollInvoice: set up a spot for req %s to find out about settlement of %s\n", reqId, rhash)
-	sessMgr.RhashMu.Unlock()
+	ln.RhashMu.Unlock()
 
 	// resultChan := sessMgr.RhashSettlements[rhash]
 	// var result string
@@ -648,7 +380,7 @@ func longPollInvoice(w http.ResponseWriter, r *http.Request) {
 		log.Printf("longPollInvoice: reqId %s timed out with no settlement.\n", reqId)
 		// timedout = true
 		break
-	case <-sessMgr.RhashSettlements[rhash][reqId]:
+	case <-ln.RhashSettlements[rhash][reqId]:
 		result["gotresult"] = true
 		result["settled"] = true
 		log.Printf("longPollInvoice: reqId %s got a result like: %#v\n", reqId, result)
