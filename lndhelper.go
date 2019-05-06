@@ -2,8 +2,7 @@
 package main
 
 import (
-	"encoding/hex"
-	"log"
+	"time"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/lightningnetwork/lnd/lnrpc"
@@ -13,8 +12,10 @@ import (
 	"gopkg.in/macaroon.v2"
 
 	"context"
+	"encoding/hex"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os/user"
 	"path"
 	"sync"
@@ -94,8 +95,8 @@ func (lh *lndHelper) init() {
 	log.Printf("ln client inited and connected successfully")
 }
 
-func (lh *lndHelper) GetInvoiceFromLND(sats int64, memo string) *lnrpc.AddInvoiceResponse {
-	log.Printf("getInvoiceFromLND: adsats %d, memo %s\n", sats, memo)
+func (lh *lndHelper) NewInvoiceFromLND(sats int64, memo string) *lnrpc.AddInvoiceResponse {
+	log.Printf("NewInvoiceFromLND: satoshis: %d, memo: '%s'\n", sats, memo)
 	ctx := context.Background()
 	//--------------
 	// see example in https://github.com/michael1011/lightningtip/blob/master/backends/lnd.go
@@ -110,7 +111,7 @@ func (lh *lndHelper) GetInvoiceFromLND(sats int64, memo string) *lnrpc.AddInvoic
 	if err != nil {
 		panic(err)
 	}
-	log.Printf("getInvoiceFromLND teh AddInvoiceResponse: %#v\n", addInvoiceResp)
+	log.Printf("NewInvoiceFromLND teh AddInvoiceResponse: %#v\n", addInvoiceResp)
 	// return invoice.PaymentRequest
 	return addInvoiceResp
 }
@@ -128,6 +129,18 @@ func (lh *lndHelper) LookupInvoiceFromLND(rhash string) *lnrpc.Invoice {
 	// log.Printf("lookupInvoiceFromLND: teh invoice: %#v\n", invoice)
 	// return invoice.PaymentRequest
 	return invoice
+}
+func (lh *lndHelper) ReadSettled(rhash string, reqId string) chan struct{} {
+	lh.RhashMu.Lock()
+	if lh.RhashSettlements[rhash] == nil {
+		// lh.RhashSettlements[rhash] = make(chan struct{}, 1)
+		lh.RhashSettlements[rhash] = map[string]chan struct{}{}
+	}
+	settledChan := make(chan struct{}, 1)
+	lh.RhashSettlements[rhash][reqId] = settledChan
+	log.Printf("longPollInvoice: set up a spot for req %s to find out about settlement of %s\n", reqId, rhash)
+	lh.RhashMu.Unlock()
+	return settledChan
 }
 func (lh *lndHelper) MonitorInvoices() {
 	// lh.RhashSettlements = map[string]chan struct{}{}
@@ -174,4 +187,21 @@ func (lh *lndHelper) MonitorInvoices() {
 		// log.Printf("MonitorInvoices: got invoice %# v", pretty.Formatter(wot))
 	}
 
+}
+func (lh *lndHelper) getInvoiceStatus(rhash string) (settled bool, expired bool) {
+
+	invoice := lh.LookupInvoiceFromLND(rhash)
+	settled = (invoice.GetState() == lnrpc.Invoice_SETTLED)
+	expired = false
+	nowsec := time.Now().UnixNano() / int64(time.Second)
+	created := invoice.GetCreationDate()
+	expiry := invoice.GetExpiry()
+	age := nowsec - created
+	expiretime := created + expiry
+	if nowsec > expiretime {
+		expired = true
+	}
+	log.Printf("i think time is now %d, invoice creationdate of %d, making it %d seconds old, it has expiry of %d sec aka at %d, so is it expired? %t\n", nowsec, created, age, expiry, expiretime, expired)
+
+	return settled, expired
 }

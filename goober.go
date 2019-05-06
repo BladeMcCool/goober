@@ -11,8 +11,6 @@ import (
 	"time"
 
 	_ "github.com/kr/pretty"
-
-	"github.com/lightningnetwork/lnd/lnrpc"
 	"gopkg.in/yaml.v2"
 
 	"encoding/json"
@@ -23,7 +21,7 @@ import (
 )
 
 // var sessStoar *sessions.CookieStore
-var recaptchaSecret, authKey, encryptKey string
+// var recaptchaSecret, authKey, encryptKey string
 var letterRunes = []rune("01234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
 //RandString make random strings of runes in n length, if that wasnt completely obvious.
@@ -100,28 +98,13 @@ func main() {
 }
 
 func getInvoiceForm(w http.ResponseWriter, r *http.Request) {
-	if pass, _ := captchaScoreHighEnough(w, r); !pass {
+	if pass, _ := captcha.isUserReal(w, r); !pass {
 		w.Write([]byte(""))
 		return
 	}
 
-	// type verifyReq struct {
-	// 	Secret   string `json:"secret"`
-	// 	Response string `json:"response"`
-	// 	Remoteip string `json:"remoteip"`
-	// }
-	// vreq := &verifyReq{
-	// 	Secret:   "xxxxxx",
-	// 	Response: message,
-	// 	Remoteip: ip,
-	// }
-	// vreqSer, err := json.Marshal(true)
-	// if err != nil {
-	// 	fmt.Println(err.Error())
-	// }
-	log.Println("allow form")
+	log.Println("getInvoiceForm: allow form")
 	userSess := sessMgr.GetSession(r)
-	// score := userSess.Values["recaptcha-score"].(float64)
 	rando := RandString(32)
 	userSess.Values["authtoken"] = rando
 	userSess.Save(r, w)
@@ -133,40 +116,16 @@ func getInvoiceForm(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	// w.Write([]byte("u win, maybe this will be a bool that allows the page to show the form. or some secret we make and put in the session that we can check later. ur score was: " + fmt.Sprintf("%f", score)))
 	w.Write(resp)
 }
 
-func captchaScoreHighEnough(w http.ResponseWriter, r *http.Request) (bool, float64) {
-	score := captcha.UpdateRecaptchaScore(w, r)
-
-	// userSess.Values["homo-code"] = token
-	// userSess.Values["homo-factor"] = score
-	log.Printf("captcha score was %f\n", score)
-
-	if score < 0.5 {
-		// ded(w)
-		fmt.Printf("captcha score was too low.\n")
-		// w.WriteHeader(http.StatusNoContent)
-		return false, score
-	}
-	return true, score
-}
-
 func getInvoice(w http.ResponseWriter, r *http.Request) {
-
-	// paramsUrlEnc := r.URL.Query().Get("p")
 	var params map[string]interface{}
 	err := json.Unmarshal([]byte(r.URL.Query().Get("p")), &params)
 	if err != nil {
 		panic(err)
 	}
 	expectToken, haveExpectToken := sessMgr.GetSession(r).Values["authtoken"].(string)
-
-	// log.Println("DEBUG DELETE THOSE NEXT TWO LINES")
-	// expectToken = "FAKE-AUTH"
-	// haveExpectToken = true
-	// log.Println("DEBUG DELETE THOSE ABOVE TWO LINES")
 
 	gotToken, haveParamToken := params["authtoken"].(string)
 	amountFloat, _ := params["amount"].(float64)
@@ -175,9 +134,6 @@ func getInvoice(w http.ResponseWriter, r *http.Request) {
 	if amount == 0 {
 		amount = 1
 	}
-	// log.Printf("fuckin wot: %#v, %d, %s\n", params, amount, earmark)
-	// log.Println(reflect.TypeOf(params["amount"]))
-	// panic("nibba")
 	authed := true
 	if !haveExpectToken || !haveParamToken || (gotToken != expectToken) {
 		authed = false
@@ -191,7 +147,7 @@ func getInvoice(w http.ResponseWriter, r *http.Request) {
 
 	var score float64
 	var pass = false
-	if pass, score = captchaScoreHighEnough(w, r); !pass {
+	if pass, score = captcha.isUserReal(w, r); !pass {
 		w.Write([]byte(""))
 		return
 	}
@@ -200,7 +156,7 @@ func getInvoice(w http.ResponseWriter, r *http.Request) {
 	if earmark != "" {
 		memo = memo + ", Earmarked for " + earmark
 	}
-	addInvoiceResp := ln.GetInvoiceFromLND(amount, memo)
+	addInvoiceResp := ln.NewInvoiceFromLND(amount, memo)
 	sess := sessMgr.GetSession(r)
 	sess.Values["invoice-payreq"] = addInvoiceResp.PaymentRequest
 	sess.Values["invoice-rhash"] = hex.EncodeToString(addInvoiceResp.RHash)
@@ -208,7 +164,6 @@ func getInvoice(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("clearly had a good enough score: %f\n", score)
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	// w.Write([]byte("u win, maybe this will be a bool that allows the page to show the form. or some secret we make and put in the session that we can check later. ur score was: " + fmt.Sprintf("%f", score)))
 	w.Write([]byte(addInvoiceResp.PaymentRequest))
 }
 
@@ -223,7 +178,7 @@ func lastInvoice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	settled, expired := getInvoiceStatus(rhash)
+	settled, expired := ln.getInvoiceStatus(rhash)
 	if expired || settled {
 		payreq = ""
 		delete(sess.Values, "invoice-rhash")
@@ -232,24 +187,6 @@ func lastInvoice(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Write([]byte(payreq))
-}
-
-func getInvoiceStatus(rhash string) (settled bool, expired bool) {
-
-	invoice := ln.LookupInvoiceFromLND(rhash)
-	settled = (invoice.GetState() == lnrpc.Invoice_SETTLED)
-	expired = false
-	nowsec := time.Now().UnixNano() / int64(time.Second)
-	created := invoice.GetCreationDate()
-	expiry := invoice.GetExpiry()
-	age := nowsec - created
-	expiretime := created + expiry
-	if nowsec > expiretime {
-		expired = true
-	}
-	log.Printf("i think time is now %d, invoice creationdate of %d, making it %d seconds old, it has expiry of %d sec aka at %d, so is it expired? %t\n", nowsec, created, age, expiry, expiretime, expired)
-
-	return settled, expired
 }
 
 func pollInvoice(w http.ResponseWriter, r *http.Request) {
@@ -264,7 +201,7 @@ func pollInvoice(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	settled, expired := getInvoiceStatus(rhash)
+	settled, expired := ln.getInvoiceStatus(rhash)
 	if expired || settled {
 		// sess.Values["invoice-rhash"]
 		delete(sess.Values, "invoice-rhash")
@@ -277,7 +214,7 @@ func pollInvoice(w http.ResponseWriter, r *http.Request) {
 
 func sendJSON(w http.ResponseWriter, value interface{}) {
 	rStr, _ := json.Marshal(value)
-	log.Printf("sendJSON: about to send this:\n%s\n", rStr)
+	log.Printf("sendJSON: about to send this:%s\n", rStr)
 	w.Write(rStr)
 }
 
@@ -309,115 +246,23 @@ func longPollInvoice(w http.ResponseWriter, r *http.Request) {
 	)
 
 	ctx, cancel = context.WithTimeout(context.Background(), 299*time.Second)
-	// resultChan := make(chan struct{})
-	ln.RhashMu.Lock()
-	if ln.RhashSettlements[rhash] == nil {
-		// ln.RhashSettlements[rhash] = make(chan struct{}, 1)
-		ln.RhashSettlements[rhash] = map[string]chan struct{}{}
-	}
-	ln.RhashSettlements[rhash][reqId] = make(chan struct{}, 1)
-	log.Printf("longPollInvoice: set up a spot for req %s to find out about settlement of %s\n", reqId, rhash)
-	ln.RhashMu.Unlock()
-
-	// resultChan := sessMgr.RhashSettlements[rhash]
-	// var result string
 	defer cancel()
-	// go func(resultChan chan<- string) {
-	// timedout := false
-	// _ = timedout
 	closedNotify := w.(http.CloseNotifier).CloseNotify()
-	// go func() {
-	// 	// time.Sleep(298 * time.Second)
-	// 	// resultChan <- "test restuls"
-	// 	attempt := 0
-	// 	for {
-	// 		attempt++
-	// 		if timedout {
-	// 			break
-	// 		}
-	// 		select {
-	// 		case <-closedNotify:
-	// 			// if httpClosed {
-	// 			log.Printf("methinks client closed connection, so lets stop polling.")
-	// 			resultChan <- struct{}{}
-	// 			return
-	// 			//break
-	// 			// }
-	// 		default:
-	// 			//keep running the loop.
-	// 		}
-	// 		log.Printf("about to do attempt %d to get invoicestatus of rhash %s\n", attempt, rhash)
-	// 		settled, expired := getInvoiceStatus(rhash)
-
-	// 		if expired {
-	// 			result["expired"] = true
-	// 		}
-	// 		if settled {
-	// 			result["settled"] = true
-	// 		}
-
-	// 		if expired || settled {
-	// 			// sess.Values["invoice-rhash"]
-	// 			delete(sess.Values, "invoice-rhash")
-	// 			delete(sess.Values, "invoice-payreq")
-	// 			sess.Save(r, w)
-
-	// 			resultChan <- struct{}{}
-	// 			return
-	// 		}
-
-	// 		time.Sleep(1 * time.Second)
-	// 		// panic("reread this make sure it makes sense")
-	// 	}
-
-	// 	// }
-
-	// }()
 
 	select {
-	case <-ctx.Done():
-		result["timedout"] = true
-		log.Printf("longPollInvoice: reqId %s timed out with no settlement.\n", reqId)
-		// timedout = true
-		break
-	case <-ln.RhashSettlements[rhash][reqId]:
-		result["gotresult"] = true
-		result["settled"] = true
-		log.Printf("longPollInvoice: reqId %s got a result like: %#v\n", reqId, result)
-		break
 	case <-closedNotify:
 		log.Printf("longPollInvoice: reqId %s client closed connection:\n", reqId)
 		return
+	case <-ln.ReadSettled(rhash, reqId):
+		// case <-ln.RhashSettlements[rhash][reqId]:
+		result["gotresult"] = true
+		result["settled"] = true
+		log.Printf("longPollInvoice: reqId %s got a result like: %#v\n", reqId, result)
+	case <-ctx.Done():
+		result["timedout"] = true
+		log.Printf("longPollInvoice: reqId %s timed out with no settlement.\n", reqId)
 	}
 	log.Printf("longPollInvoice: reqId %s got down here.", reqId)
 
 	sendJSON(w, result)
 }
-
-// 	w.WriteHeader(http.StatusNoContent)
-// 	w.WriteHeader(http.StatusNoContent)
-// 	w.WriteHeader(http.StatusNoContent)
-// func ded(w http.ResponseWriter) {
-
-// func ded(w http.ResponseWriter) {
-// 	fmt.Printf("mcFail\n")
-// 	w.WriteHeader(http.StatusNoContent)
-// 	w.Write([]byte("204 - T-gay"))
-// }v
-// func ded(w http.ResponseWriter) {
-// func ded(w http.ResponseWriter) {
-// func ded(w http.ResponseWriter) {
-// 	if err != nil {
-// 		panic("cant read session ... very gay.")
-// 	}
-// 	fmt.Printf("loaded this sess data: %#v\n", userSess.Values)
-
-// 	var savedScore float64
-// 	if userSess.Values["homo-factor"] != nil {
-// 		savedScore = userSess.Values["homo-factor"].(float64)
-// 	} else {
-// 		savedScore = 0.012345
-// 	}
-// 	w.Write([]byte("bye shitlord " + fmt.Sprintf("%f", savedScore)))
-
-// }

@@ -37,6 +37,16 @@ func (rh *recaptchaHelper) BotCheck(next http.Handler) http.Handler {
 	})
 }
 
+func (rh *recaptchaHelper) isUserReal(w http.ResponseWriter, r *http.Request) (bool, float64) {
+	score := rh.UpdateRecaptchaScore(w, r)
+	log.Printf("isUserReal: captcha score was %f\n", score)
+	if score < 0.5 {
+		fmt.Printf("isUserReal captcha score was too low.\n")
+		return false, score
+	}
+	return true, score
+}
+
 func (rh *recaptchaHelper) UpdateRecaptchaScore(w http.ResponseWriter, r *http.Request) float64 {
 	userSess := rh.SessMgr.GetSession(r)
 	log.Printf("recaptchaHelper UpdateRecaptchaScore: this sess values at start: %#v\n", userSess.Values)
