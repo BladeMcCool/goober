@@ -1,0 +1,10 @@
+go build
+rc=$?; if [[ $rc != 0 ]]; then 
+ echo "------------------------------"
+ echo "           problem"
+ echo "------------------------------"
+ exit
+fi
+echo "no compile problem, running it ..."
+./goober
+
