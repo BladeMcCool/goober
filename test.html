@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+
+	<script src="https://www.google.com/recaptcha/api.js?render=6LdilaAUAAAAAC5xBxHpoaZ7h3gqEXsTZdY0nkfc"></script>
+	<script>
+	</script>
+
+ 	<script type="text/javascript">
+ 		recaptcha_sitekey = '6LdilaAUAAAAAC5xBxHpoaZ7h3gqEXsTZdY0nkfc'
+
+		function ajax(url, successFunc, timeout, timeoutFunc) {
+			const Http = new XMLHttpRequest();
+			// const url= 'http://' + window.location.hostname + ':8081' + '/?t=' + token;
+			Http.open("GET", url);
+			Http.send();
+			if (timeout) {
+				Http.timeout = timeout
+				if (timeoutFunc) {
+					Http.ontimeout = timeoutFunc
+				}
+			}
+			Http.onreadystatechange=(e)=>{
+				if (Http.readyState !== 4) { //state 4 is complete
+					return
+				}
+				if (Http.status !== 200 && Http.status !== 204) {
+					console.log("poop, didnt work.")
+					return
+				}
+				console.log(Http.responseText)
+				successFunc(Http.responseText)
+			}
+			console.log(`ajax sent to: ${url}`)
+		}
+		function blockingAjax(url, timeoutMs) {
+			return new Promise(resolve => {
+				doneFunc = function(responseText) {
+					resolve(responseText)
+				}
+				timeoutFunc = function() {
+					console.log('blockingAjax timed out on that call.')
+					resolve(JSON.stringify({timedout:true}))
+				}
+				// try {
+				ajax(url, doneFunc, timeoutMs, timeoutFunc)
+				// } catch(e) {
+				// 	console.log(`blockingAjax err, likely timeout: ${e}, will just call it done, its not a real error.`)
+				// 	resolve('')
+				// }
+			});
+		}
+
+		function checkCanShowForm() {
+			grecaptcha.ready(function() {
+				grecaptcha.execute(recaptcha_sitekey, {action: 'getInvoiceForm'}).then(function(token) {
+					console.log('yeah this happent')
+					console.log('whee ' + token)
+
+					// const url= 'http://' + window.location.hostname + ':8081' + '/?t=' + token;
+					const url= '/backend/getInvoiceForm/?t=' + token;
+					ajax(url, showFormIfAllowed)
+
+				});
+				console.log('should be ready to do shit.')
+			});
+		}
+		function dummyShowForm() {
+			console.log("dummyShowForm ere1")
+			document.querySelector('#authtoken').value = 'FAKE-AUTH'
+			document.querySelector('#button').onclick = generateInvoice
+		}
+
+		function showFormIfAllowed(json) {
+			resultDecoded = JSON.parse(json)
+			console.log(resultDecoded)
+			if (resultDecoded && resultDecoded[0]) {
+				console.log(`we got a true value, and the rando was: ${resultDecoded[1]}`)
+				showForm(resultDecoded[1])
+			} else {
+				console.log("we DID NOT got a true value")
+			}
+			showExistingInvoice()
+		}
+
+		function showForm(authtoken) {
+			console.log("showForm ere1")
+			document.querySelector('#authtoken').value = authtoken
+			document.querySelector('#button').onclick = generateInvoice
+			console.log("showForm ere2")
+		}
+
+		function generateInvoice() {
+			//collect the values, 
+			flds = ['authtoken','earmark','amount']
+			rules = {
+				'amount':'required,int',
+				'authtoken':'required',
+			}
+			submit = {}
+			var allValid = true
+			for (fld of flds) {
+				var valid = true
+				submit[fld] = document.querySelector(`#${fld}`).value
+
+				console.log(fld)
+				console.log(submit[fld])
+
+				if (rules[fld]) {
+					fldRules = rules[fld].split(',')
+					for (rule of fldRules) {
+						if (rule == 'required' && !submit[fld]) {
+							valid = false
+							break
+						}
+						if (rule == 'int') {
+							submit[fld] = parseInt(submit[fld])
+						}
+						if (rule == 'int' && !(submit[fld] > 0)) {
+							valid = false
+							break
+						}
+					}
+					if (!valid) {
+						allValid = false
+					}
+
+					fldLbl = document.querySelector(`#lbl_${fld}`)
+					if (!fldLbl) {
+						continue
+					}
+
+					setColor = ""
+					if (!valid) {
+						setColor = 'red'
+					}
+					fldLbl.style.color = setColor
+				}
+			}
+
+			if (!allValid) {
+				console.log('form had some errors, not going to generate invoice yet.')
+				return
+			}
+
+			//send a ajax for generate invoice, 
+			paramsString = encodeURIComponent(JSON.stringify(submit))
+			grecaptcha.ready(function() {
+				grecaptcha.execute(recaptcha_sitekey, {action: 'getInvoice'}).then(function(token) {
+					url = '/backend/getInvoice/?p=' + paramsString + '&t=' + token;
+					ajax(url, showInvoice)
+				});
+			});
+			//it will give us one if we sent valid authtoken and pass captcha again.
+		}
+
+		qrElId = 'qrcode'
+		payReqTextId = 'payreq'
+		function showInvoice(invoice) {
+			if (invoice == "") {
+				return
+			}
+			console.log(invoice)
+			console.log("now show it as a qr code.")
+			qrEl = document.querySelector(`#${qrElId}`)
+			while (qrEl.hasChildNodes()) {
+			  qrEl.removeChild(qrEl.firstChild);
+			}
+			var qrcode = new QRCode(qrElId, {
+			    text: invoice,
+			    width: 256,
+			    height: 256,
+			    colorDark : "#000000",
+			    colorLight : "#ffffff",
+			    correctLevel : QRCode.CorrectLevel.H
+			});
+			document.querySelector(`#${qrElId}`).style.display = 'block'
+			document.querySelector(`#${payReqTextId}`).innerText = invoice
+			longPollForPayment()
+		}
+		function showInvoiceTest() {
+			showInvoice(document.getElementById('earmark').value)
+		}
+
+		// paymentpollGiveupAfterMs = 35*1000
+		paymentpollGiveupAfterMs = 120*1000
+		paymentpollStartMs = 5000
+		paymentpollBackoffMultiplier = 1.25
+		paymentpollAttempts = 0
+		longPollTimeout = 295000
+
+		function sleep(ms) {
+			return new Promise(resolve => setTimeout(resolve, ms));
+		}
+		async function pollForPayment(testRhash) {
+			paid = false
+			url = '/backend/pollInvoice/'
+			if (testRhash) {
+				url = url + '?rhash=' + testRhash
+			}
+			console.log(`will poll ${url} for invoice payment`)
+			pollStart = new Date().getTime()
+			invalidResponse = false
+			function showPaymentSuccess(resultJson) {
+				if (!resultJson) {
+					invalidResponse = true
+					console.log("invalid response during pollForPayment, oopsie.")
+					return
+				}
+				result = JSON.parse(resultJson)
+				if (!result) {
+					return
+				}
+
+				paid = true
+				console.log("appears to be a true result on this pollForPayment result handling. we set paid=true now so this should stop polling.")
+				qrEl = document.querySelector(`#${qrElId}`)
+				while (qrEl.hasChildNodes()) {
+				  qrEl.removeChild(qrEl.firstChild);
+				}
+				qrEl.innerHTML = "<h1>PAID</h1>"
+
+			}
+
+			while (!paid && !invalidResponse) {
+				pollMsSoFar = (new Date().getTime() - pollStart)
+				console.log(`been polling for ${pollMsSoFar} ms ...`)
+				if (pollMsSoFar > paymentpollGiveupAfterMs) {
+					console.log("payment took too long, going to stop polling.")
+					break
+				}
+				nextTimeout = paymentpollStartMs * Math.pow(paymentpollBackoffMultiplier, paymentpollAttempts)
+				console.log(`this poll attempt will time out after, and/or not again until ${nextTimeout} ms elapses`)
+				
+				ajax(url, showPaymentSuccess, nextTimeout)
+				paymentpollAttempts++
+				await sleep(nextTimeout);
+			}
+		}
+
+		async function longPollForPayment(testRhash) {
+			console.log('longPollForPayment, here setting up')
+			paid = false
+			url = '/backend/longPollInvoice/'
+			if (testRhash) {
+				url = url + '?rhash=' + testRhash
+			}
+			invalid = false
+			while (true) {
+				// try {
+				resultJson = await blockingAjax(url, longPollTimeout)
+				// } catch(e) {
+					// console.error(e)
+				// }
+				console.log(`after getting result: ${resultJson}`)
+				if (!resultJson) {
+					console.log('longPollForPayment, result broken, stop looping.')
+					swapCodeForStatus('BROKEN')
+					break
+				}
+				result = JSON.parse(resultJson)
+				if (result.invalid) {
+					console.log('longPollForPayment, result invalid, stop looping.')
+					swapCodeForStatus('INVALID')
+					break
+				}
+				if (result.expired) {
+					console.log('longPollForPayment, result expired, stop looping.')
+					swapCodeForStatus('EXPIRED')
+					break
+				}
+				if (result.settled) {
+					console.log('longPollForPayment, result PAID !!!!!!, stop looping.')
+					swapCodeForStatus('PAID')
+					break
+				}
+			}
+		}
+		function swapCodeForStatus(status) {
+			qrEl = document.querySelector(`#${qrElId}`)
+			while (qrEl.hasChildNodes()) {
+			  qrEl.removeChild(qrEl.firstChild);
+			}
+			qrEl.innerHTML = `<h1>${status}</h1>`
+			document.querySelector(`#${payReqTextId}`).innerText = ""
+		}
+		function showExistingInvoice() {
+			url = '/backend/lastInvoice/'
+			ajax(url, showInvoice)
+		}
+
+		function testPollForPayment() {
+			qrEl = document.querySelector(`#${qrElId}`)
+			qrEl.innerHTML = "<h1>QRCODE</h1>"
+			qrEl.style.display = "block"
+			longPollForPayment('c0f8a567c2972b5ed625a465ffc5f9366428c99d3ffbf27e7b1bcd0503af4b9b')
+		}
+
+		document.addEventListener('DOMContentLoaded', function () {
+			checkCanShowForm()
+			// dummyShowForm()
+			console.log("welp, time wo facism")
+		});
+	</script>
+	<script type="text/javascript" src="/qrcode.min.js"></script><!-- note this is the KeeeX/qrcodejs version since the original maintainer went away and the code had bugs! -->
+</head>
+<body>
+
+	<table>
+	<input type="hidden" id="authtoken">
+	<tr><td id="lbl_amount">Satoshis Amount</td><td><input id="amount" name="amount"></td></tr>
+	<tr><td id="lbl_earmark">Earmark? (optional)</td><td><input id="earmark" name="earmark"></td></tr>
+	</table>
+	<button id="button">Generate Invoice</button>
+	<button id="button" onclick="testPollForPayment()">Test</button>
+
+	<div id="qrcode" style="margin-top:15px; display: none"></div>
+	<p style="width: 350px; overflow-wrap: break-word;" id="payreq"></p>
+</p>	
+
+
+</body>
+</html>
