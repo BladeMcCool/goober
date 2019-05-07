@@ -4,13 +4,15 @@ package main
 import (
 	"time"
 
+	// "github.com/kr/pretty"
+	"github.com/lightningnetwork/lnd/macaroons"
+	"google.golang.org/grpc/credentials"
+
 	// "github.com/lightningnetwork/lnd/channeldb"
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/lightningnetwork/lnd/lnrpc"
-	"github.com/lightningnetwork/lnd/macaroons"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
 	"gopkg.in/macaroon.v2"
 
 	"context"
@@ -34,17 +36,8 @@ func NewLNDHelper(myConf *conf) *lndHelper {
 }
 
 func (lh *lndHelper) init(myConf *conf) {
-	// usr, err := user.Current()
-	// if err != nil {
-	// 	fmt.Println("Cannot get current user:", err)
-	// 	return
-	// }
-
-	// fmt.Println("The user home directory: " + usr.HomeDir)
-	// tlsCertPath := path.Join(usr.HomeDir, ".lnd/tls.cert")
-	// // macaroonPath := path.Join(usr.HomeDir, ".lnd/data/chain/bitcoin/mainnet/admin.macaroon")
-	// macaroonPath := path.Join(usr.HomeDir, ".lnd/data/chain/bitcoin/mainnet/invoiceX.macaroon")
 	tlsCreds, err := credentials.NewClientTLSFromFile(myConf.LndTlsCertPath, "")
+	// log.Printf("tlsCreds: %# v\n", pretty.Formatter(tlsCreds))
 	if err != nil {
 		fmt.Println("Cannot get node tls credentials", err)
 		return
@@ -64,10 +57,11 @@ func (lh *lndHelper) init(myConf *conf) {
 
 	opts := []grpc.DialOption{
 		grpc.WithTransportCredentials(tlsCreds),
+		// grpc.WithInsecure(),
 		grpc.WithBlock(),
 		grpc.WithPerRPCCredentials(macaroons.NewMacaroonCredential(mac)),
 	}
-	connHostPort := myConf.LndHost + ":10009"
+	connHostPort := myConf.LndRpcHostPort
 	log.Printf("lndHelper init: about to attempt communication with lnd at %s\n", connHostPort)
 	conn, err := grpc.Dial(connHostPort, opts...)
 	log.Printf("lndHelper init: here0\n")

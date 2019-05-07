@@ -42,7 +42,7 @@ type conf struct {
 	SessCipher      string `yaml:"sessCipher"`
 	LndTlsCertPath  string `yaml:"lndTlsCertPath"`
 	LndMacaroonPath string `yaml:"lndMacaroonPath"`
-	LndHost         string `yaml:"lndHost"`
+	LndRpcHostPort  string `yaml:"lndRpcHostPort"`
 }
 
 func (c *conf) getConf() *conf {
@@ -68,8 +68,8 @@ func (c *conf) getConf() *conf {
 		c.LndTlsCertPath = path.Join(usr.HomeDir, ".lnd/tls.cert")
 		c.LndMacaroonPath = path.Join(usr.HomeDir, ".lnd/data/chain/bitcoin/mainnet/admin.macaroon")
 	}
-	if (c.LndHost == "") {
-		c.LndHost = "localhost"
+	if c.LndRpcHostPort == "" {
+		c.LndRpcHostPort = "localhost:10009"
 	}
 	return c
 }
