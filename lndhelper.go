@@ -4,6 +4,8 @@ package main
 import (
 	"time"
 
+	// "github.com/lightningnetwork/lnd/channeldb"
+
 	"github.com/davecgh/go-spew/spew"
 	"github.com/lightningnetwork/lnd/lnrpc"
 	"github.com/lightningnetwork/lnd/macaroons"
@@ -16,8 +18,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
-	"os/user"
-	"path"
 	"sync"
 )
 
@@ -29,27 +29,28 @@ type lndHelper struct {
 
 func NewLNDHelper(myConf *conf) *lndHelper {
 	helper := &lndHelper{}
-	helper.init()
+	helper.init(myConf)
 	return helper
 }
 
-func (lh *lndHelper) init() {
-	usr, err := user.Current()
-	if err != nil {
-		fmt.Println("Cannot get current user:", err)
-		return
-	}
+func (lh *lndHelper) init(myConf *conf) {
+	// usr, err := user.Current()
+	// if err != nil {
+	// 	fmt.Println("Cannot get current user:", err)
+	// 	return
+	// }
 
-	fmt.Println("The user home directory: " + usr.HomeDir)
-	tlsCertPath := path.Join(usr.HomeDir, ".lnd/tls.cert")
-	macaroonPath := path.Join(usr.HomeDir, ".lnd/data/chain/bitcoin/mainnet/admin.macaroon")
-	tlsCreds, err := credentials.NewClientTLSFromFile(tlsCertPath, "")
+	// fmt.Println("The user home directory: " + usr.HomeDir)
+	// tlsCertPath := path.Join(usr.HomeDir, ".lnd/tls.cert")
+	// // macaroonPath := path.Join(usr.HomeDir, ".lnd/data/chain/bitcoin/mainnet/admin.macaroon")
+	// macaroonPath := path.Join(usr.HomeDir, ".lnd/data/chain/bitcoin/mainnet/invoiceX.macaroon")
+	tlsCreds, err := credentials.NewClientTLSFromFile(myConf.LndTlsCertPath, "")
 	if err != nil {
 		fmt.Println("Cannot get node tls credentials", err)
 		return
 	}
 
-	macaroonBytes, err := ioutil.ReadFile(macaroonPath)
+	macaroonBytes, err := ioutil.ReadFile(myConf.LndMacaroonPath)
 	if err != nil {
 		fmt.Println("Cannot read macaroon file", err)
 		return
@@ -66,14 +67,19 @@ func (lh *lndHelper) init() {
 		grpc.WithBlock(),
 		grpc.WithPerRPCCredentials(macaroons.NewMacaroonCredential(mac)),
 	}
-
-	conn, err := grpc.Dial("localhost:10009", opts...)
+	connHostPort := myConf.LndHost + ":10009"
+	log.Printf("lndHelper init: about to attempt communication with lnd at %s\n", connHostPort)
+	conn, err := grpc.Dial(connHostPort, opts...)
+	log.Printf("lndHelper init: here0\n")
 	// lnConn = conn
 	if err != nil {
+		log.Printf("lndHelper init: here0.1\n")
 		fmt.Println("cannot dial to lnd", err)
 		return
 	}
+	log.Printf("lndHelper init: here0.2\n")
 	lh.lnClient = lnrpc.NewLightningClient(conn)
+	log.Printf("lndHelper init: here1\n")
 
 	ctx := context.Background()
 	getInfoResp, err := lh.lnClient.GetInfo(ctx, &lnrpc.GetInfoRequest{})
@@ -81,6 +87,7 @@ func (lh *lndHelper) init() {
 		fmt.Println("Cannot get info from node:", err)
 		return
 	}
+	log.Printf("lndHelper init: here2\n")
 
 	var funBoi = &lnrpc.ListChannelsRequest{}
 	getChanResp, err := lh.lnClient.ListChannels(ctx, funBoi)
@@ -102,6 +109,14 @@ func (lh *lndHelper) NewInvoiceFromLND(sats int64, memo string) *lnrpc.AddInvoic
 	// see example in https://github.com/michael1011/lightningtip/blob/master/backends/lnd.go
 	// also examples in https://github.com/lightningnetwork/lnd/blob/master/lnd_test.go
 	// var invoice *lnrpc.AddInvoiceResponse
+	maxLen := 1024 // saving 5mb of built binary size by not importing channeldb for a single value.
+	// maxLen := channeldb.MaxMemoSize
+	if len(memo) > maxLen {
+		//https://bitcoin.stackexchange.com/questions/85951/whats-the-maximum-size-of-the-memo-in-a-ln-payment-request
+		//here some guy says 639 chars, but lnd itself seems to use a max of 1024 as defined by that channeldb.MaxMemoSize, so i'm going to go with that.
+		memo = memo[:maxLen]
+	}
+
 	addInvoiceResp, err := lh.lnClient.AddInvoice(ctx, &lnrpc.Invoice{
 		Memo:   memo,
 		Value:  sats,
@@ -146,7 +161,7 @@ func (lh *lndHelper) MonitorInvoices() {
 	// lh.RhashSettlements = map[string]chan struct{}{}
 	lh.RhashSettlements = map[string](map[string]chan struct{}){}
 	ctx := context.Background()
-	log.Printf("MonitorInvoices startup")
+	log.Printf("MonitorInvoices startup!")
 	in := &lnrpc.InvoiceSubscription{}
 	subscribeClient, err := lh.lnClient.SubscribeInvoices(ctx, in)
 	if err != nil {

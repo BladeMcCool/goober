@@ -102,7 +102,16 @@
 			var allValid = true
 			for (fld of flds) {
 				var valid = true
-				submit[fld] = document.querySelector(`#${fld}`).value
+				inFld = document.querySelector(`#${fld}`)
+				console.log(`${fld} before any fucks`)
+				if (inFld && inFld.options && inFld.selectedIndex) {
+					console.log("fuckyou1")
+					submit[fld] = inFld.options[inFld.selectedIndex].value; 
+				} else {
+					console.log("fuckyou2")
+					submit[fld] = inFld.value
+				}
+				console.log(`fld ${fld} value is ${submit[fld]}`)
 
 				console.log(fld)
 				console.log(submit[fld])
@@ -138,7 +147,7 @@
 					fldLbl.style.color = setColor
 				}
 			}
-
+			// allValid = false
 			if (!allValid) {
 				console.log('form had some errors, not going to generate invoice yet.')
 				return
@@ -310,7 +319,18 @@
 	<table>
 	<input type="hidden" id="authtoken">
 	<tr><td id="lbl_amount">Satoshis Amount</td><td><input id="amount" name="amount"></td></tr>
-	<tr><td id="lbl_earmark">Earmark? (optional)</td><td><input id="earmark" name="earmark"></td></tr>
+	<!-- <tr><td id="lbl_earmark">Earmark? (optional)</td><td><input id="earmark" name="earmark"></td></tr> -->
+	<tr><td id="lbl_earmark">Earmark?</td><td>
+		<select name="earmark" id="earmark">
+			<option value="skunkworks">Shadow Operations/Skunk Works</option>
+			<option value="beach">Beach Cleanup</option>
+			<option value="outreach">Homeless Outreach</option>
+			<option value="crypto">Cryptocurrency Education</option>
+			<option value="media">Media Acquisition Education</option>
+			<option value="propaganda">Messaging and Promotion</option>
+			<option value="admin">Administration</option>
+		</select>
+	</td></tr>
 	</table>
 	<button id="button">Generate Invoice</button>
 	<button id="button" onclick="testPollForPayment()">Test</button>

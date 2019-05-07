@@ -1,6 +1,9 @@
 package main
 
 import (
+	"os/user"
+	"path"
+
 	_ "bytes"
 	"context"
 	"encoding/hex"
@@ -37,16 +40,36 @@ type conf struct {
 	RecaptchaSecret string `yaml:"recaptchaSecret"`
 	SessAuthKey     string `yaml:"sessAuthKey"`
 	SessCipher      string `yaml:"sessCipher"`
+	LndTlsCertPath  string `yaml:"lndTlsCertPath"`
+	LndMacaroonPath string `yaml:"lndMacaroonPath"`
+	LndHost         string `yaml:"lndHost"`
 }
 
 func (c *conf) getConf() *conf {
 	yamlFile, err := ioutil.ReadFile("goober.conf.yaml")
 	if err != nil {
 		log.Printf("yamlFile.Get err   #%v ", err)
+		panic("configuration error")
 	}
 	err = yaml.Unmarshal(yamlFile, c)
 	if err != nil {
 		log.Fatalf("Unmarshal: %v", err)
+	}
+
+	if c.LndTlsCertPath == "" || c.LndMacaroonPath == "" {
+		log.Println("getConf, missing tls cert path or macaroon path in config, using default paths.")
+		usr, err := user.Current()
+		if err != nil {
+			panic("Cannot get current user:" + err.Error())
+		}
+
+		log.Printf("getConf: The user home directory: " + usr.HomeDir + "\n")
+
+		c.LndTlsCertPath = path.Join(usr.HomeDir, ".lnd/tls.cert")
+		c.LndMacaroonPath = path.Join(usr.HomeDir, ".lnd/data/chain/bitcoin/mainnet/admin.macaroon")
+	}
+	if (c.LndHost == "") {
+		c.LndHost = "localhost"
 	}
 	return c
 }
