@@ -10,10 +10,10 @@ it is nice to be able to receive money via lightning network on your website. up
 clone the repo, build the code (golang), run goober under supervisord or screen or something to daemonize it. reverse proxy to it from your website. symlink to the web dir from your html doc root so you can go to yoursite/something/index.html and get the web/index.html and its assets.
 
 ## What's with that configuration?
-the sample config file needs to have proper values put it in and rename to goober.conf.yaml, it looks for it in the current working directory. goober is presently hardcoded to run on port 8081.
+the sample config file needs to have proper values put it in and rename to goober.conf.yaml, it looks for it in the current working directory. goober is presently hardcoded to run on port 8081. also **you must edit the index.html** and replace both occurrences of 6LdilaAUAAAAAC5xBxHpoaZ7h3gqEXsTZdY0nkfc with your actual recaptcha v3 site key. (TODO: put this in the config as well and add a backend method to return this to the page to prep the recaptcha script load.)
 
 ## Anything interesting to know about reverse proxying to goober?
-one of the methods is a long poller, designed to go up to 300 sec before timing out and the client will restablish until such time as they close their browser or pay the invoice. keeping the gateway to the backend open for that long required overriding defaults like so:
+one of the methods is a long poller, designed to go up to 300 sec before timing out and the client will restablish until such time as they close their browser or pay the invoice. keeping the gateway to the backend open for that long required overriding nginx defaults like so:
 
 ```
 location /backend/ {
