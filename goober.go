@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"os/user"
 	"path"
 
@@ -84,6 +85,7 @@ var ln *lndHelper
 var captcha *recaptchaHelper
 
 func init() {
+	log.SetOutput(os.Stdout)
 	rand.Seed(time.Now().UnixNano())
 
 	myConf.getConf()
