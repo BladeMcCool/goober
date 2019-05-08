@@ -91,7 +91,20 @@
 			console.log("showForm ere2")
 		}
 
+		var invoiceInProgress = false
+		function setInvoiceInProgress(inProgress) {
+			invoiceInProgress = inProgress
+			if (inProgress) {
+				document.querySelector('#button').disabled = true
+			} else {
+				document.querySelector('#button').disabled = false
+			}
+		}
 		function generateInvoice() {
+			if (invoiceInProgress) {
+				console.log("generateInvoice: aborting due to belief that prior one is already in progress.")
+				return
+			}
 			//collect the values, 
 			flds = ['authtoken','earmark','amount']
 			rules = {
@@ -103,18 +116,12 @@
 			for (fld of flds) {
 				var valid = true
 				inFld = document.querySelector(`#${fld}`)
-				console.log(`${fld} before any fucks`)
 				if (inFld && inFld.options && inFld.selectedIndex) {
-					console.log("fuckyou1")
 					submit[fld] = inFld.options[inFld.selectedIndex].value; 
 				} else {
-					console.log("fuckyou2")
 					submit[fld] = inFld.value
 				}
 				console.log(`fld ${fld} value is ${submit[fld]}`)
-
-				console.log(fld)
-				console.log(submit[fld])
 
 				if (rules[fld]) {
 					fldRules = rules[fld].split(',')
@@ -164,7 +171,10 @@
 				honkhonk = document.querySelector('#honkler')
 				honkhonk.style.display = 'none'
 			}
+
+			setInvoiceInProgress(true)
 			showHonkler()
+			
 			grecaptcha.ready(function() {
 				grecaptcha.execute(recaptcha_sitekey, {action: 'getInvoice'}).then(function(token) {
 					url = '/backend/getInvoice/?p=' + paramsString + '&t=' + token;
@@ -181,6 +191,7 @@
 		payReqTextId = 'payreq'
 		function showInvoice(invoice) {
 			if (invoice == "") {
+				setInvoiceInProgress(false)
 				return
 			}
 			console.log(invoice)
@@ -206,61 +217,61 @@
 		}
 
 		// paymentpollGiveupAfterMs = 35*1000
-		paymentpollGiveupAfterMs = 120*1000
-		paymentpollStartMs = 5000
-		paymentpollBackoffMultiplier = 1.25
-		paymentpollAttempts = 0
-		longPollTimeout = 295000
+		// paymentpollGiveupAfterMs = 120*1000
+		// paymentpollStartMs = 5000
+		// paymentpollBackoffMultiplier = 1.25
+		// paymentpollAttempts = 0
 
-		function sleep(ms) {
-			return new Promise(resolve => setTimeout(resolve, ms));
-		}
-		async function pollForPayment(testRhash) {
-			paid = false
-			url = '/backend/pollInvoice/'
-			if (testRhash) {
-				url = url + '?rhash=' + testRhash
-			}
-			console.log(`will poll ${url} for invoice payment`)
-			pollStart = new Date().getTime()
-			invalidResponse = false
-			function showPaymentSuccess(resultJson) {
-				if (!resultJson) {
-					invalidResponse = true
-					console.log("invalid response during pollForPayment, oopsie.")
-					return
-				}
-				result = JSON.parse(resultJson)
-				if (!result) {
-					return
-				}
+		// function sleep(ms) {
+		// 	return new Promise(resolve => setTimeout(resolve, ms));
+		// }
+		// async function pollForPayment(testRhash) {
+		// 	paid = false
+		// 	url = '/backend/pollInvoice/'
+		// 	if (testRhash) {
+		// 		url = url + '?rhash=' + testRhash
+		// 	}
+		// 	console.log(`will poll ${url} for invoice payment`)
+		// 	pollStart = new Date().getTime()
+		// 	invalidResponse = false
+		// 	function showPaymentSuccess(resultJson) {
+		// 		if (!resultJson) {
+		// 			invalidResponse = true
+		// 			console.log("invalid response during pollForPayment, oopsie.")
+		// 			return
+		// 		}
+		// 		result = JSON.parse(resultJson)
+		// 		if (!result) {
+		// 			return
+		// 		}
 
-				paid = true
-				console.log("appears to be a true result on this pollForPayment result handling. we set paid=true now so this should stop polling.")
-				qrEl = document.querySelector(`#${qrElId}`)
-				while (qrEl.hasChildNodes()) {
-				  qrEl.removeChild(qrEl.firstChild);
-				}
-				qrEl.innerHTML = "<h1>PAID</h1>"
+		// 		paid = true
+		// 		console.log("appears to be a true result on this pollForPayment result handling. we set paid=true now so this should stop polling.")
+		// 		qrEl = document.querySelector(`#${qrElId}`)
+		// 		while (qrEl.hasChildNodes()) {
+		// 		  qrEl.removeChild(qrEl.firstChild);
+		// 		}
+		// 		qrEl.innerHTML = "<h1>PAID</h1>"
 
-			}
+		// 	}
 
-			while (!paid && !invalidResponse) {
-				pollMsSoFar = (new Date().getTime() - pollStart)
-				console.log(`been polling for ${pollMsSoFar} ms ...`)
-				if (pollMsSoFar > paymentpollGiveupAfterMs) {
-					console.log("payment took too long, going to stop polling.")
-					break
-				}
-				nextTimeout = paymentpollStartMs * Math.pow(paymentpollBackoffMultiplier, paymentpollAttempts)
-				console.log(`this poll attempt will time out after, and/or not again until ${nextTimeout} ms elapses`)
+		// 	while (!paid && !invalidResponse) {
+		// 		pollMsSoFar = (new Date().getTime() - pollStart)
+		// 		console.log(`been polling for ${pollMsSoFar} ms ...`)
+		// 		if (pollMsSoFar > paymentpollGiveupAfterMs) {
+		// 			console.log("payment took too long, going to stop polling.")
+		// 			break
+		// 		}
+		// 		nextTimeout = paymentpollStartMs * Math.pow(paymentpollBackoffMultiplier, paymentpollAttempts)
+		// 		console.log(`this poll attempt will time out after, and/or not again until ${nextTimeout} ms elapses`)
 				
-				ajax(url, showPaymentSuccess, nextTimeout)
-				paymentpollAttempts++
-				await sleep(nextTimeout);
-			}
-		}
+		// 		ajax(url, showPaymentSuccess, nextTimeout)
+		// 		paymentpollAttempts++
+		// 		await sleep(nextTimeout);
+		// 	}
+		// }
 
+		longPollTimeout = 295000
 		async function longPollForPayment(testRhash) {
 			console.log('longPollForPayment, here setting up')
 			paid = false
@@ -298,6 +309,7 @@
 					break
 				}
 			}
+			setInvoiceInProgress(false)
 		}
 		function swapCodeForStatus(status) {
 			qrEl = document.querySelector(`#${qrElId}`)
@@ -344,8 +356,9 @@
 			<option value="admin">Administration</option>
 		</select>
 	</td></tr>
+	<tr><td id="lbl_btn">&nbsp;</td><td><button id="button" disabled=true>Generate Invoice</button></td></tr>
 	</table>
-	<button id="button">Generate Invoice</button>
+	
 	<!-- <button id="button" onclick="testPollForPayment()">Test</button> -->
 	<img src="./ezgif-7-51de8928459c.gif" id="honkler" style="display:none">
 	<div id="qrcode" style="margin-top:15px; display: none"></div>

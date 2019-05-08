@@ -204,7 +204,11 @@ func lastInvoice(w http.ResponseWriter, r *http.Request) {
 	}
 
 	settled, expired := ln.getInvoiceStatus(rhash)
-	if expired || settled {
+	dbgReset := false
+	if r.URL.Query().Get("reset") != "" {
+		dbgReset = true
+	}
+	if expired || settled || dbgReset {
 		payreq = ""
 		delete(sess.Values, "invoice-rhash")
 		delete(sess.Values, "invoice-payreq")
@@ -256,7 +260,10 @@ func longPollInvoice(w http.ResponseWriter, r *http.Request) {
 		log.Printf("longPollInvoice, no rhash from session or query :( ... just gonna return without doing anything. does it matter that i dont write anything first with w.Write?")
 		validRequest = false
 	}
-	reqId := r.Header.Get(reqIdKey)
+	if passed, score := captcha.LastRecaptchaPassed(w, r); !passed {
+		log.Printf("longPollInvoice, last captcha score was too low at %f", score)
+		validRequest = false
+	}
 
 	result := map[string]bool{}
 	if !validRequest {
@@ -274,6 +281,7 @@ func longPollInvoice(w http.ResponseWriter, r *http.Request) {
 	defer cancel()
 	closedNotify := w.(http.CloseNotifier).CloseNotify()
 
+	reqId := r.Header.Get(reqIdKey)
 	select {
 	case <-closedNotify:
 		log.Printf("longPollInvoice: reqId %s client closed connection:\n", reqId)

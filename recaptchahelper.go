@@ -19,23 +19,24 @@ type recaptchaHelper struct {
 func NewRecaptchaHelper(myConf *conf, sessMgr *sessionManager) *recaptchaHelper {
 	return &recaptchaHelper{SessMgr: sessMgr}
 }
-func (rh *recaptchaHelper) BotCheck(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		//return result of previous check from this session, or perform the check if we havent.
-		userSess := rh.SessMgr.GetSession(r)
-		// if err != nil {
-		// 	panic("cant read session ... very gay.")
-		// }
-		token := r.URL.Query().Get("t")
-		ip, port, err := net.SplitHostPort(r.RemoteAddr)
-		if err != nil {
-			fmt.Printf("userip: %q is not IP:port\n", r.RemoteAddr)
-		}
-		_, _ = ip, port
-		_ = userSess
-		_ = token
-	})
-}
+
+// func (rh *recaptchaHelper) BotCheck(next http.Handler) http.Handler {
+// 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+// 		//return result of previous check from this session, or perform the check if we havent.
+// 		userSess := rh.SessMgr.GetSession(r)
+// 		// if err != nil {
+// 		// 	panic("cant read session ... very gay.")
+// 		// }
+// 		token := r.URL.Query().Get("t")
+// 		ip, port, err := net.SplitHostPort(r.RemoteAddr)
+// 		if err != nil {
+// 			fmt.Printf("userip: %q is not IP:port\n", r.RemoteAddr)
+// 		}
+// 		_, _ = ip, port
+// 		_ = userSess
+// 		_ = token
+// 	})
+// }
 
 func (rh *recaptchaHelper) isUserReal(w http.ResponseWriter, r *http.Request) (bool, float64) {
 	score := rh.UpdateRecaptchaScore(w, r)
@@ -64,6 +65,19 @@ func (rh *recaptchaHelper) UpdateRecaptchaScore(w http.ResponseWriter, r *http.R
 	userSess.Values["recaptcha-score"] = score
 	userSess.Save(r, w)
 	return score
+}
+func (rh *recaptchaHelper) LastRecaptchaPassed(w http.ResponseWriter, r *http.Request)  (bool, float64) {
+	userSess := rh.SessMgr.GetSession(r)
+	score, got := userSess.Values["recaptcha-score"].(float64)
+	if !got {
+		return false, 0
+	}
+
+	if score < 0.5 {
+		fmt.Printf("LastRecaptchaPassed captcha score was too low.\n")
+		return false, score
+	}
+	return true, score
 }
 
 func (rh *recaptchaHelper) GetRecaptchaScore(token string, ip string) float64 {

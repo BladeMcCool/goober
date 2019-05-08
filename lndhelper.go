@@ -163,6 +163,10 @@ func (lh *lndHelper) MonitorInvoices() {
 	}
 	for {
 		wot, err := subscribeClient.Recv()
+		if err != nil {
+			log.Printf(err.Error())
+			panic("stop on account of that error and figure out what to do about it if anything. if it was connect err, maybe reconnect attempt?")
+		}
 		rhash := hex.EncodeToString(wot.RHash)
 		// log.Printf("MonitorInvoices: got invoice %# v", pretty.Formatter(wot))
 
