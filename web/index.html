@@ -155,10 +155,23 @@
 
 			//send a ajax for generate invoice, 
 			paramsString = encodeURIComponent(JSON.stringify(submit))
+
+			function showHonkler() {
+				honkhonk = document.querySelector('#honkler')
+				honkhonk.style.display = 'block'
+			}
+			function hideHonkler() {
+				honkhonk = document.querySelector('#honkler')
+				honkhonk.style.display = 'none'
+			}
+			showHonkler()
 			grecaptcha.ready(function() {
 				grecaptcha.execute(recaptcha_sitekey, {action: 'getInvoice'}).then(function(token) {
 					url = '/backend/getInvoice/?p=' + paramsString + '&t=' + token;
-					ajax(url, showInvoice)
+					ajax(url, function(text){
+						hideHonkler()
+						showInvoice(text)
+					})
 				});
 			});
 			//it will give us one if we sent valid authtoken and pass captcha again.
@@ -334,7 +347,7 @@
 	</table>
 	<button id="button">Generate Invoice</button>
 	<!-- <button id="button" onclick="testPollForPayment()">Test</button> -->
-
+	<img src="./ezgif-7-51de8928459c.gif" id="honkler" style="display:none">
 	<div id="qrcode" style="margin-top:15px; display: none"></div>
 	<p style="width: 350px; overflow-wrap: break-word;" id="payreq"></p>
 </p>	
