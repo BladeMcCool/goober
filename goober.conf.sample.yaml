@@ -1,0 +1,6 @@
+recaptchaSecret: from_recaptcha_admin_console
+sessAuthKey: 32_random_characters
+sessCipher: 16_random_characters
+lndRpcHostPort: 1.2.3.4:10009
+lndMacaroonPath: /path/to/admin/or/invoice.macaroon
+lndTlsCertPath: /path/to/lnd/tls.cert

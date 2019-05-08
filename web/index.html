@@ -174,7 +174,7 @@
 
 			setInvoiceInProgress(true)
 			showHonkler()
-			
+
 			grecaptcha.ready(function() {
 				grecaptcha.execute(recaptcha_sitekey, {action: 'getInvoice'}).then(function(token) {
 					url = '/backend/getInvoice/?p=' + paramsString + '&t=' + token;
@@ -337,7 +337,7 @@
 			console.log("welp, time wo facism")
 		});
 	</script>
-	<script type="text/javascript" src="/qrcode.min.js"></script><!-- note this is the KeeeX/qrcodejs version since the original maintainer went away and the code had bugs! -->
+	<script type="text/javascript" src="./qrcode.min.js"></script><!-- note this is the KeeeX/qrcodejs version since the original maintainer went away and the code had bugs! -->
 </head>
 <body>
 
