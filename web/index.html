@@ -2,13 +2,8 @@
 <html>
 <head>
 	<meta name="viewport" content="width=device-width, initial-scale=1">
-
-	<script src="https://www.google.com/recaptcha/api.js?render=6LdilaAUAAAAAC5xBxHpoaZ7h3gqEXsTZdY0nkfc"></script>
-	<script>
-	</script>
-
  	<script type="text/javascript">
- 		recaptcha_sitekey = '6LdilaAUAAAAAC5xBxHpoaZ7h3gqEXsTZdY0nkfc'
+ 		recaptcha_sitekey = 'tbd'
 
 		function ajax(url, successFunc, timeout, timeoutFunc) {
 			const Http = new XMLHttpRequest();
@@ -63,7 +58,7 @@
 					ajax(url, showFormIfAllowed)
 
 				});
-				console.log('should be ready to do shit.')
+				console.log('should be ready to do things.')
 			});
 		}
 		function dummyShowForm() {
@@ -85,10 +80,8 @@
 		}
 
 		function showForm(authtoken) {
-			console.log("showForm ere1")
 			document.querySelector('#authtoken').value = authtoken
 			document.querySelector('#button').onclick = generateInvoice
-			console.log("showForm ere2")
 		}
 
 		var invoiceInProgress = false
@@ -105,7 +98,6 @@
 				console.log("generateInvoice: aborting due to belief that prior one is already in progress.")
 				return
 			}
-			//collect the values, 
 			flds = ['authtoken','earmark','amount']
 			rules = {
 				'amount':'required,int',
@@ -160,7 +152,6 @@
 				return
 			}
 
-			//send a ajax for generate invoice, 
 			paramsString = encodeURIComponent(JSON.stringify(submit))
 
 			function showHonkler() {
@@ -184,7 +175,6 @@
 					})
 				});
 			});
-			//it will give us one if we sent valid authtoken and pass captcha again.
 		}
 
 		qrElId = 'qrcode'
@@ -215,61 +205,6 @@
 		function showInvoiceTest() {
 			showInvoice(document.getElementById('earmark').value)
 		}
-
-		// paymentpollGiveupAfterMs = 35*1000
-		// paymentpollGiveupAfterMs = 120*1000
-		// paymentpollStartMs = 5000
-		// paymentpollBackoffMultiplier = 1.25
-		// paymentpollAttempts = 0
-
-		// function sleep(ms) {
-		// 	return new Promise(resolve => setTimeout(resolve, ms));
-		// }
-		// async function pollForPayment(testRhash) {
-		// 	paid = false
-		// 	url = '/backend/pollInvoice/'
-		// 	if (testRhash) {
-		// 		url = url + '?rhash=' + testRhash
-		// 	}
-		// 	console.log(`will poll ${url} for invoice payment`)
-		// 	pollStart = new Date().getTime()
-		// 	invalidResponse = false
-		// 	function showPaymentSuccess(resultJson) {
-		// 		if (!resultJson) {
-		// 			invalidResponse = true
-		// 			console.log("invalid response during pollForPayment, oopsie.")
-		// 			return
-		// 		}
-		// 		result = JSON.parse(resultJson)
-		// 		if (!result) {
-		// 			return
-		// 		}
-
-		// 		paid = true
-		// 		console.log("appears to be a true result on this pollForPayment result handling. we set paid=true now so this should stop polling.")
-		// 		qrEl = document.querySelector(`#${qrElId}`)
-		// 		while (qrEl.hasChildNodes()) {
-		// 		  qrEl.removeChild(qrEl.firstChild);
-		// 		}
-		// 		qrEl.innerHTML = "<h1>PAID</h1>"
-
-		// 	}
-
-		// 	while (!paid && !invalidResponse) {
-		// 		pollMsSoFar = (new Date().getTime() - pollStart)
-		// 		console.log(`been polling for ${pollMsSoFar} ms ...`)
-		// 		if (pollMsSoFar > paymentpollGiveupAfterMs) {
-		// 			console.log("payment took too long, going to stop polling.")
-		// 			break
-		// 		}
-		// 		nextTimeout = paymentpollStartMs * Math.pow(paymentpollBackoffMultiplier, paymentpollAttempts)
-		// 		console.log(`this poll attempt will time out after, and/or not again until ${nextTimeout} ms elapses`)
-				
-		// 		ajax(url, showPaymentSuccess, nextTimeout)
-		// 		paymentpollAttempts++
-		// 		await sleep(nextTimeout);
-		// 	}
-		// }
 
 		longPollTimeout = 295000
 		async function longPollForPayment(testRhash) {
@@ -331,11 +266,31 @@
 			longPollForPayment('c0f8a567c2972b5ed625a465ffc5f9366428c99d3ffbf27e7b1bcd0503af4b9b')
 		}
 
-		document.addEventListener('DOMContentLoaded', function () {
-			checkCanShowForm()
-			// dummyShowForm()
-			console.log("welp, time wo facism")
-		});
+		injectRecaptchaScript = function() {
+			console.log(`adding recaptcha script using site key ${recaptcha_sitekey}`)
+			script = document.createElement('script');
+			script.type = 'text/javascript';
+			script.async = true;
+			script.onload = function(){
+					// remote script has loaded
+					console.log(`added script from ${script.src}, lets roll.`)
+					checkCanShowForm()
+			};
+			script.src = `https://www.google.com/recaptcha/api.js?render=${recaptcha_sitekey}`
+			document.getElementsByTagName('head')[0].appendChild(script);
+		}
+
+		loadRecaptchaWithSiteKey = function(keyText) {
+			recaptcha_sitekey = keyText
+			console.log(`got recaptcha site key of ${recaptcha_sitekey} from the backend`)	
+			injectRecaptchaScript()
+		}
+		console.log(`to load recaptcha site key ...`)
+		ajax('/backend/getRecaptchaSiteKey/', loadRecaptchaWithSiteKey)
+
+		// document.addEventListener('DOMContentLoaded', function () {
+		// 	// dummyShowForm()
+		// });
 	</script>
 	<script type="text/javascript" src="./qrcode.min.js"></script><!-- note this is the KeeeX/qrcodejs version since the original maintainer went away and the code had bugs! -->
 </head>

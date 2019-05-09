@@ -1,4 +1,5 @@
 recaptchaSecret: from_recaptcha_admin_console
+recaptchaSiteKey: from_recaptcha_admin_console
 sessAuthKey: 32_random_characters
 sessCipher: 16_random_characters
 lndRpcHostPort: 1.2.3.4:10009

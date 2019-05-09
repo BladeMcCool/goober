@@ -38,12 +38,13 @@ func RandString(n int) string {
 }
 
 type conf struct {
-	RecaptchaSecret string `yaml:"recaptchaSecret"`
-	SessAuthKey     string `yaml:"sessAuthKey"`
-	SessCipher      string `yaml:"sessCipher"`
-	LndTlsCertPath  string `yaml:"lndTlsCertPath"`
-	LndMacaroonPath string `yaml:"lndMacaroonPath"`
-	LndRpcHostPort  string `yaml:"lndRpcHostPort"`
+	RecaptchaSecret  string `yaml:"recaptchaSecret"`
+	RecaptchaSiteKey string `yaml:"recaptchaSiteKey"`
+	SessAuthKey      string `yaml:"sessAuthKey"`
+	SessCipher       string `yaml:"sessCipher"`
+	LndTlsCertPath   string `yaml:"lndTlsCertPath"`
+	LndMacaroonPath  string `yaml:"lndMacaroonPath"`
+	LndRpcHostPort   string `yaml:"lndRpcHostPort"`
 }
 
 func (c *conf) getConf() *conf {
@@ -109,6 +110,7 @@ func main() {
 	reqIdKey = rid.HeaderKey
 	// r.
 	_ = r
+	r.HandleFunc("/getRecaptchaSiteKey/", getRecaptchaSiteKey)
 	r.HandleFunc("/getInvoiceForm/", getInvoiceForm)
 	r.HandleFunc("/getInvoice/", getInvoice)
 	r.HandleFunc("/lastInvoice/", lastInvoice)
@@ -120,6 +122,10 @@ func main() {
 	if err := http.ListenAndServe(":8081", rid.Handler(r)); err != nil {
 		panic(err)
 	}
+}
+func getRecaptchaSiteKey(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte(myConf.RecaptchaSiteKey))
+	return
 }
 
 func getInvoiceForm(w http.ResponseWriter, r *http.Request) {
