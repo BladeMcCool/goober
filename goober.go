@@ -210,11 +210,16 @@ func lastInvoice(w http.ResponseWriter, r *http.Request) {
 	}
 
 	settled, expired := ln.getInvoiceStatus(rhash)
-	dbgReset := false
-	if r.URL.Query().Get("reset") != "" {
-		dbgReset = true
+	explicitClear := false
+	if r.URL.Query().Get("clear") != "" {
+		if isReal, _ := captcha.isUserReal(w, r); isReal {
+			explicitClear = true
+			log.Printf("lastInvoice, explicitClear, do it for a real person.")
+		} else {
+			log.Printf("lastInvoice, explicitClear, not doing it for a request that is believed to be automated bot.")
+		}
 	}
-	if expired || settled || dbgReset {
+	if expired || settled || explicitClear {
 		payreq = ""
 		delete(sess.Values, "invoice-rhash")
 		delete(sess.Values, "invoice-payreq")

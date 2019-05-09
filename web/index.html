@@ -82,16 +82,52 @@
 		function showForm(authtoken) {
 			document.querySelector('#authtoken').value = authtoken
 			document.querySelector('#button').onclick = generateInvoice
+			document.querySelector('#clear').onclick = requestClearInvoice
 		}
 
 		var invoiceInProgress = false
 		function setInvoiceInProgress(inProgress) {
 			invoiceInProgress = inProgress
+			genBtn = document.querySelector('#button')
 			if (inProgress) {
-				document.querySelector('#button').disabled = true
+				genBtn.disabled = true
 			} else {
-				document.querySelector('#button').disabled = false
+				genBtn.disabled = false
 			}
+		}
+		function swapGenerateAndClearBtns(showClear) {
+			clearBtn = document.querySelector('#clear')
+			genBtn = document.querySelector('#button')
+			if (showClear) {
+				genBtn.style.display = 'none'
+				clearBtn.style.display = ''
+			} else {
+				genBtn.style.display = ''
+				clearBtn.style.display = 'none'
+			}
+		}
+		function showHonkler() {
+				honkhonk = document.querySelector('#honkler')
+				honkhonk.style.display = 'block'
+		}
+		function hideHonkler() {
+			honkhonk = document.querySelector('#honkler')
+			honkhonk.style.display = 'none'
+		}
+		function requestClearInvoice() {
+			showHonkler()
+			clearBtn = document.querySelector('#clear')
+			clearBtn.disabled = true
+			grecaptcha.ready(function() {
+				grecaptcha.execute(recaptcha_sitekey, {action: 'clearInvoice'}).then(function(token) {
+					url = '/backend/lastInvoice/?clear=1&t=' + token;
+					ajax(url, function(sessionInvoiceRhash){
+						hideHonkler()
+						clearBtn.disabled = false
+						clearInvoiceDOM(sessionInvoiceRhash)
+					})
+				});
+			});
 		}
 		function generateInvoice() {
 			if (invoiceInProgress) {
@@ -154,15 +190,6 @@
 
 			paramsString = encodeURIComponent(JSON.stringify(submit))
 
-			function showHonkler() {
-				honkhonk = document.querySelector('#honkler')
-				honkhonk.style.display = 'block'
-			}
-			function hideHonkler() {
-				honkhonk = document.querySelector('#honkler')
-				honkhonk.style.display = 'none'
-			}
-
 			setInvoiceInProgress(true)
 			showHonkler()
 
@@ -182,8 +209,10 @@
 		function showInvoice(invoice) {
 			if (invoice == "") {
 				setInvoiceInProgress(false)
+				swapGenerateAndClearBtns(false)
 				return
 			}
+			swapGenerateAndClearBtns(true)
 			console.log(invoice)
 			console.log("now show it as a qr code.")
 			qrEl = document.querySelector(`#${qrElId}`)
@@ -192,18 +221,30 @@
 			}
 			var qrcode = new QRCode(qrElId, {
 			    text: invoice,
-			    width: 256,
-			    height: 256,
+			    width: 350,
+			    height: 350,
 			    colorDark : "#000000",
 			    colorLight : "#ffffff",
 			    correctLevel : QRCode.CorrectLevel.H
 			});
 			document.querySelector(`#${qrElId}`).style.display = 'block'
 			document.querySelector(`#${payReqTextId}`).innerText = invoice
+			document.querySelector(`#${payReqTextId}`).style.display = ''
 			longPollForPayment()
 		}
 		function showInvoiceTest() {
 			showInvoice(document.getElementById('earmark').value)
+		}
+		function clearInvoiceDOM(invoice) {
+			if (invoice == "") {
+				document.querySelector(`#${qrElId}`).style.display = 'none'
+				document.querySelector(`#${payReqTextId}`).style.display = 'none'
+				document.querySelector(`#${payReqTextId}`).innerText = ""
+				swapGenerateAndClearBtns(false)
+				setInvoiceInProgress(false)
+				return
+			}
+			showInvoice(invoice)
 		}
 
 		longPollTimeout = 295000
@@ -311,13 +352,15 @@
 			<option value="skunkworks">Shadow Operations/Skunk Works</option>
 		</select>
 	</td></tr>
-	<tr><td id="lbl_btn">&nbsp;</td><td><button id="button" disabled=true>Generate Invoice</button></td></tr>
+	<tr><td id="lbl_btn">&nbsp;</td><td><button id="button" disabled=true>Generate Invoice</button><button id="clear" style="display:none">Clear Invoice</button></td></tr>
 	</table>
 	
 	<!-- <button id="button" onclick="testPollForPayment()">Test</button> -->
-	<img src="./ezgif-7-51de8928459c.gif" id="honkler" style="display:none">
+	<div id="honkler" style="width: 350px; text-align: center; display:none">
+		<img src="./ezgif-7-51de8928459c.gif" style="display: inline-block;">
+	</div>
 	<div id="qrcode" style="margin-top:15px; display: none"></div>
-	<p style="width: 350px; overflow-wrap: break-word;" id="payreq"></p>
+	<p style="width: 350px; overflow-wrap: break-word; font-family: monospace" id="payreq"></p>
 </p>	
 
 
