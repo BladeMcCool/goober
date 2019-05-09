@@ -42,7 +42,7 @@ tlsextraip=1.2.3.4
 then **restart lnd** and it should make new cert and key files that include the new ip. i'll note doing it like this should not mess your channels or anything.
 
 ## QR code javascript
-I'm including qrcode.min.js which is from [KeeeX's fork of qrcodejs](https://raw.githubusercontent.com/KeeeX/qrcodejs/1c87e7fbee2da04ae6c404ad13f9522ea8c9120c/qrcode.min.js), because it works properly.
+I'm including qrcode.min.js which is from [KeeeX's fork of qrcodejs](https://github.com/KeeeX/qrcodejs).
 
 ## Image assets
 Are believed to be public domain. Honk honk.
