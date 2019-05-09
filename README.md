@@ -5,7 +5,7 @@ the goo that bers
 it is nice to be able to receive money via lightning network on your website. upon browsing the index.html you will get a form that allows you to enter a number of satoshis and a charitable function to earmark the money for. once valid, the form will allow you to generate an invoice from the lnd and display it as a QR code. the page will then poll the backend until the invoice is paid and show a PAID message when complete. It relies on google recaptcha v3 to prevent bot abuse/ddos, and relies on lnd's database of invoices to recall invoice info via rhash and save memo notes.
 
 ## Install
-clone the repo, build the code (golang), run goober under supervisord or screen or something to daemonize it. reverse proxy to it from your website. symlink to the web dir from your html doc root so you can go to yoursite/something/index.html and get the web/index.html and its assets.
+clone the repo, build the code (go build or run the included ./buildrun shellscript), run goober under supervisord or screen or similar to daemonize it. reverse proxy to it from your website. symlink to the web dir from your html doc root so you can go to yoursite/something/index.html and get the web/index.html and its assets.
 
 ## What's with that configuration?
 the sample config file needs to have proper values put it in and rename to goober.conf.yaml, it looks for it in the current working directory. goober is presently hardcoded to run on port 8081. you will need to put your recaptcha v3 site key and secret in the config file as well since they are needed for the mandatory built in anti bot protection.
