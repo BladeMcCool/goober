@@ -221,8 +221,8 @@
 			}
 			var qrcode = new QRCode(qrElId, {
 			    text: invoice,
-			    width: 350,
-			    height: 350,
+			    width: 256,
+			    height: 256,
 			    colorDark : "#000000",
 			    colorLight : "#ffffff",
 			    correctLevel : QRCode.CorrectLevel.H
@@ -359,7 +359,11 @@
 	<div id="honkler" style="width: 350px; text-align: center; display:none">
 		<img src="./ezgif-7-51de8928459c.gif" style="display: inline-block;">
 	</div>
-	<div id="qrcode" style="margin-top:15px; display: none"></div>
+	<div id="qrcode-container" style="width: 350px; text-align: center;">
+		<div id="qrcode-center" style="display:inline-block">
+			<div id="qrcode" style="margin-top:15px; display: none"></div>
+		</div>
+	</div>
 	<p style="width: 350px; overflow-wrap: break-word; font-family: monospace" id="payreq"></p>
 </p>	
 
