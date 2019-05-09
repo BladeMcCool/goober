@@ -4,6 +4,11 @@ the goo that bers
 ## A little more please ??
 it is nice to be able to receive money via lightning network on your website. upon browsing the index.html you will get a form that allows you to enter a number of satoshis and a charitable function to earmark the money for. once valid, the form will allow you to generate an invoice from the lnd and display it as a QR code. the page will then poll the backend until the invoice is paid and show a PAID message when complete. It relies on google recaptcha v3 to prevent bot abuse/ddos, and relies on lnd's database of invoices to recall invoice info via rhash and save memo notes.
 
+## Prerequisites
+a running instance of lnd, which itself requires running a full bitcoin node of some sort (btcd, Bitcoin Core), in my case I am using Bitcoin Core. also site key and secret from recaptcha v3 which is a free anti bot service from google. Goober was written for Go version 1.12.4, which matched the recommended version for the lnd (0.6 i think) I am using. The html page included requires paths for /backend/* to be sent to Goober, a sample nginx configuration is included below.
+
+In order for you to actually be able to get paid your lnd needs to have open incoming channel capacity to it. For example, my node has two channels open to it with remote balance, one opened to me from lnbig (complimentary, how generous of them), and one from bitrefill which was imo a little overpriced. 
+
 ## Install
 clone the repo, build the code (go build or run the included ./buildrun shellscript), run goober under supervisord or screen or similar to daemonize it. reverse proxy to it from your website. symlink to the web dir from your html doc root so you can go to yoursite/something/index.html and get the web/index.html and its assets.
 
@@ -34,10 +39,7 @@ you might also find that the tls certificate doesnt have your external ip in it,
 ```
 tlsextraip=1.2.3.4
 ```
-then **restart lnd** and it should make new cert and key files that include the new ip. i'll note doing it like this should not mess your channels or anything. I have goober running under supervisord to daemonize it.
-
-## Prerequisites
-a running instance of lnd, which itself requires running a full bitcoin node of some sort (btcd, Bitcoin Core), in my case I am using Bitcoin Core. also site key and secret from recaptcha v3 which is a free anti bot service from google. Goober was written for Go version 1.12.4, which matched the recommended version for the lnd (0.6 i think) I am using. In order for you to actually be able to get paid your lnd needs to have open incoming channel capacity to it. For example, my node has two channels open to it with remote balance, one opened to me from lnbig (complimentary, how generous of them), and one from bitrefill which was imo a little overpriced. 
+then **restart lnd** and it should make new cert and key files that include the new ip. i'll note doing it like this should not mess your channels or anything.
 
 ## QR code javascript
 I'm including qrcode.min.js which is from [KeeeX's fork of qrcodejs](https://raw.githubusercontent.com/KeeeX/qrcodejs/1c87e7fbee2da04ae6c404ad13f9522ea8c9120c/qrcode.min.js), because it works properly.
