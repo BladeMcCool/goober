@@ -2,7 +2,13 @@
 package main
 
 import (
+	"io"
+	"strings"
 	"time"
+
+	"google.golang.org/grpc/status"
+
+	// "google.golang.org/grpc/internal/transport"
 
 	// "github.com/kr/pretty"
 	"github.com/lightningnetwork/lnd/macaroons"
@@ -27,6 +33,8 @@ type lndHelper struct {
 	RhashMu          sync.Mutex
 	RhashSettlements map[string](map[string]chan struct{})
 	lnClient         lnrpc.LightningClient
+	dialOpts         []grpc.DialOption
+	connHostPort     string
 }
 
 func NewLNDHelper(myConf *conf) *lndHelper {
@@ -63,16 +71,10 @@ func (lh *lndHelper) init(myConf *conf) {
 	}
 	connHostPort := myConf.LndRpcHostPort
 	log.Printf("lndHelper init: about to attempt communication with lnd at %s\n", connHostPort)
-	conn, err := grpc.Dial(connHostPort, opts...)
-	log.Printf("lndHelper init: here0\n")
-	// lnConn = conn
-	if err != nil {
-		log.Printf("lndHelper init: here0.1\n")
-		fmt.Println("cannot dial to lnd", err)
-		return
-	}
-	log.Printf("lndHelper init: here0.2\n")
-	lh.lnClient = lnrpc.NewLightningClient(conn)
+	lh.dialOpts = opts
+	lh.connHostPort = connHostPort
+	lh.lnClient = lh.getClientToLnGrpc()
+
 	log.Printf("lndHelper init: here1\n")
 
 	ctx := context.Background()
@@ -94,6 +96,19 @@ func (lh *lndHelper) init(myConf *conf) {
 	spew.Dump(getInfoResp)
 	spew.Dump(getChanResp)
 	log.Printf("ln client inited and connected successfully")
+}
+
+func (lh *lndHelper) getClientToLnGrpc() lnrpc.LightningClient {
+	conn, err := grpc.Dial(lh.connHostPort, lh.dialOpts...)
+	log.Printf("lndHelper init: here0\n")
+	// lnConn = conn
+	if err != nil {
+		log.Printf("lndHelper init: here0.1\n")
+		fmt.Println("cannot dial to lnd", err)
+		return nil
+	}
+	log.Printf("lndHelper init: here0.2\n")
+	return lnrpc.NewLightningClient(conn)
 }
 
 func (lh *lndHelper) NewInvoiceFromLND(sats int64, memo string) *lnrpc.AddInvoiceResponse {
@@ -154,52 +169,81 @@ func (lh *lndHelper) ReadSettled(rhash string, reqId string) chan struct{} {
 func (lh *lndHelper) MonitorInvoices() {
 	// lh.RhashSettlements = map[string]chan struct{}{}
 	lh.RhashSettlements = map[string](map[string]chan struct{}){}
-	ctx := context.Background()
-	log.Printf("MonitorInvoices startup!")
-	in := &lnrpc.InvoiceSubscription{}
-	subscribeClient, err := lh.lnClient.SubscribeInvoices(ctx, in)
-	if err != nil {
-		panic(err)
-	}
+
 	for {
-		wot, err := subscribeClient.Recv()
-		if err != nil {
-			log.Printf(err.Error())
-			panic("stop on account of that error and figure out what to do about it if anything. if it was connect err, maybe reconnect attempt?")
-		}
-		rhash := hex.EncodeToString(wot.RHash)
-		// log.Printf("MonitorInvoices: got invoice %# v", pretty.Formatter(wot))
 
-		if wot.State != lnrpc.Invoice_SETTLED {
-			continue
-		}
-		log.Printf("MonitorInvoices: got invoice settlement for %s\n", rhash)
-
-		// if lh.RhashSettlements[rhash] == nil || len(lh.RhashSettlements[rhash]) == 0 {
-		// 	//a long polling channel reader would have created the channel about the invoice it was interested in knowing was paid. no channel, no interest.
-		// 	continue
-		// }
-		if lh.RhashSettlements[rhash] == nil {
-			log.Printf("MonitorInvoices: there is nothing defined under rhash settlements map for %s\n", rhash)
-			//a long polling channel reader would have created the channel about the invoice it was interested in knowing was paid. no channel, no interest.
-			continue
-		}
-		// if len(lh.RhashSettlements[rhash]) > 0 {
-		// 	//hrm i dont think this can actually happen.
-		// 	continue
-		// }
-		// lh.RhashSettlements[rhash] = make(chan struct{}, 1)
-		log.Printf("MonitorInvoices: there are %d requests wanting to know about settlement of %s\n", len(lh.RhashSettlements[rhash]), rhash)
-		for reqId := range lh.RhashSettlements[rhash] {
-			lh.RhashSettlements[rhash][reqId] <- struct{}{}
-			log.Printf("MonitorInvoices: so, umm, we just put something in the channel for reqid %s to know about settlement of %s\n", reqId, rhash)
-		}
+		ctx := context.Background()
+		log.Printf("MonitorInvoices startup!")
+		in := &lnrpc.InvoiceSubscription{}
+		subscribeClient, err := lh.lnClient.SubscribeInvoices(ctx, in)
 		if err != nil {
 			panic(err)
 		}
-		// log.Printf("MonitorInvoices: got invoice %# v", pretty.Formatter(wot))
-	}
+		for {
+			invoice, err := subscribeClient.Recv()
+			if err == io.EOF {
+				log.Printf("MonitorInvoices had EOF err")
+				break
+			}
+			if err != nil {
+				log.Printf("?? '%#v' '%#v'", status.Convert(err).Code(), status.Convert(err).Message())
+			}
+			if strings.Contains(err.Error(), "transport is closing") {
+				log.Printf("MonitorInvoices transport is closing")
+				break
+			}
+			if strings.Contains(err.Error(), "all SubConns are in TransientFailure") {
+				log.Printf("MonitorInvoices all SubConns are in TransientFailure")
+				break
+			}
+			if strings.Contains(err.Error(), "unknown service lnrpc.Lightning") {
+				log.Printf("MonitorInvoices unknown service lnrpc.Lightning (is lnd waiting for wallet unlock??)")
+				break
+			}
 
+			// if err == transport.ErrConnClosing {
+			// 	log.Printf("MonitorInvoices had ErrConnClosing err")
+			// 	break
+			// }
+
+			if err != nil {
+				log.Printf(err.Error())
+				panic("stop on account of that unknown error and figure out what to do about it if anything. we should already be handling disconnects.")
+			}
+			rhash := hex.EncodeToString(invoice.RHash)
+			// log.Printf("MonitorInvoices: got invoice %# v", pretty.Formatter(invoice))
+
+			if invoice.State != lnrpc.Invoice_SETTLED {
+				continue
+			}
+			log.Printf("MonitorInvoices: got invoice settlement for %s\n", rhash)
+
+			// if lh.RhashSettlements[rhash] == nil || len(lh.RhashSettlements[rhash]) == 0 {
+			// 	//a long polling channel reader would have created the channel about the invoice it was interested in knowing was paid. no channel, no interest.
+			// 	continue
+			// }
+			if lh.RhashSettlements[rhash] == nil {
+				log.Printf("MonitorInvoices: there is nothing defined under rhash settlements map for %s\n", rhash)
+				//a long polling channel reader would have created the channel about the invoice it was interested in knowing was paid. no channel, no interest.
+				continue
+			}
+			// if len(lh.RhashSettlements[rhash]) > 0 {
+			// 	//hrm i dont think this can actually happen.
+			// 	continue
+			// }
+			// lh.RhashSettlements[rhash] = make(chan struct{}, 1)
+			log.Printf("MonitorInvoices: there are %d requests wanting to know about settlement of %s\n", len(lh.RhashSettlements[rhash]), rhash)
+			for reqId := range lh.RhashSettlements[rhash] {
+				lh.RhashSettlements[rhash][reqId] <- struct{}{}
+				log.Printf("MonitorInvoices: so, umm, we just put something in the channel for reqid %s to know about settlement of %s\n", reqId, rhash)
+			}
+			// log.Printf("MonitorInvoices: got invoice %# v", pretty.Formatter(invoice))
+		}
+
+		log.Printf("MonitorInvoices, disconnected, will attempt to reconnect in 10s.")
+		time.Sleep(10 * time.Second)
+		lh.lnClient = lh.getClientToLnGrpc()
+	}
 }
 func (lh *lndHelper) getInvoiceStatus(rhash string) (settled bool, expired bool) {
 
@@ -215,6 +259,5 @@ func (lh *lndHelper) getInvoiceStatus(rhash string) (settled bool, expired bool)
 		expired = true
 	}
 	log.Printf("i think time is now %d, invoice creationdate of %d, making it %d seconds old, it has expiry of %d sec aka at %d, so is it expired? %t\n", nowsec, created, age, expiry, expiretime, expired)
-
 	return settled, expired
 }

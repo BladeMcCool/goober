@@ -118,7 +118,7 @@ func main() {
 	r.HandleFunc("/longPollInvoice/", longPollInvoice)
 	// http.HandleFunc("/", sayHello)
 	// http.HandleFunc("/bye/", sayBye)
-	// if err := http.ListenAndServe(":8081", nil); err != nil {
+	// if err := http.ListenAndServe(":8081", nil); err != nil {}
 	if err := http.ListenAndServe(":8081", rid.Handler(r)); err != nil {
 		panic(err)
 	}

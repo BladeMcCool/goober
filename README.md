@@ -47,8 +47,11 @@ I'm including qrcode.min.js which is from [KeeeX's fork of qrcodejs](https://git
 ## Image assets
 Are believed to be public domain. Honk honk.
 
-## Support
+## Techincal Support
 Contact me
+
+## Financial Support
+[I'd love some](http://chws.ca/donate)
 
 ## License 
 [WTFPL](https://choosealicense.com/licenses/wtfpl/)
