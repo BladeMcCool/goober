@@ -187,17 +187,15 @@ func (lh *lndHelper) MonitorInvoices() {
 			}
 			if err != nil {
 				log.Printf("?? '%#v' '%#v'", status.Convert(err).Code(), status.Convert(err).Message())
-			}
-			if strings.Contains(err.Error(), "transport is closing") {
-				log.Printf("MonitorInvoices transport is closing")
-				break
-			}
-			if strings.Contains(err.Error(), "all SubConns are in TransientFailure") {
-				log.Printf("MonitorInvoices all SubConns are in TransientFailure")
-				break
-			}
-			if strings.Contains(err.Error(), "unknown service lnrpc.Lightning") {
-				log.Printf("MonitorInvoices unknown service lnrpc.Lightning (is lnd waiting for wallet unlock??)")
+				if strings.Contains(err.Error(), "transport is closing") {
+					log.Printf("MonitorInvoices transport is closing")
+				}
+				if strings.Contains(err.Error(), "all SubConns are in TransientFailure") {
+					log.Printf("MonitorInvoices all SubConns are in TransientFailure")
+				}
+				if strings.Contains(err.Error(), "unknown service lnrpc.Lightning") {
+					log.Printf("MonitorInvoices unknown service lnrpc.Lightning (is lnd waiting for wallet unlock??)")
+				}
 				break
 			}
 
