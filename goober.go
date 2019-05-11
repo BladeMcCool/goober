@@ -45,6 +45,8 @@ type conf struct {
 	LndTlsCertPath   string `yaml:"lndTlsCertPath"`
 	LndMacaroonPath  string `yaml:"lndMacaroonPath"`
 	LndRpcHostPort   string `yaml:"lndRpcHostPort"`
+	ListenPort       string `yaml:"listenPort"`
+	OnChainBTCAddr   string `yaml:"onChainBTCAddr"`
 }
 
 func (c *conf) getConf() *conf {
@@ -119,7 +121,11 @@ func main() {
 	// http.HandleFunc("/", sayHello)
 	// http.HandleFunc("/bye/", sayBye)
 	// if err := http.ListenAndServe(":8081", nil); err != nil {}
-	if err := http.ListenAndServe(":8081", rid.Handler(r)); err != nil {
+	listenPort := myConf.ListenPort
+	if listenPort == "" {
+		listenPort = "8081"
+	}
+	if err := http.ListenAndServe(":"+listenPort, rid.Handler(r)); err != nil {
 		panic(err)
 	}
 }
@@ -141,7 +147,7 @@ func getInvoiceForm(w http.ResponseWriter, r *http.Request) {
 	userSess.Save(r, w)
 	log.Printf("getInvoiceForm: session data currently: %#v", userSess.Values)
 
-	resp, err := json.Marshal([]interface{}{true, rando})
+	resp, err := json.Marshal([]interface{}{true, rando, myConf.OnChainBTCAddr})
 	if err != nil {
 		fmt.Println(err.Error())
 	}

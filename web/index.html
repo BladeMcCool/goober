@@ -2,6 +2,11 @@
 <html>
 <head>
 	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<style type=text/css>
+		h1 { font-family: sans-serif; font-size: 22px; }
+		h2 { font-family: sans-serif; font-size: 16px; }
+		table td { font-family: sans-serif; font-size: 12px; }
+	</style>
  	<script type="text/javascript">
  		recaptcha_sitekey = 'tbd'
 
@@ -24,7 +29,7 @@
 					console.log("poop, didnt work.")
 					return
 				}
-				console.log(Http.responseText)
+				// console.log(Http.responseText)
 				successFunc(Http.responseText)
 			}
 			console.log(`ajax sent to: ${url}`)
@@ -72,17 +77,50 @@
 			console.log(resultDecoded)
 			if (resultDecoded && resultDecoded[0]) {
 				console.log(`we got a true value, and the rando was: ${resultDecoded[1]}`)
-				showForm(resultDecoded[1])
+				showForm(resultDecoded)
 			} else {
 				console.log("we DID NOT got a true value")
 			}
 			showExistingInvoice()
 		}
 
-		function showForm(authtoken) {
+		onchainAddr = ""
+		function showForm(params) {
+			authtoken = params[1]
+			onchainAddr = params[2]
 			document.querySelector('#authtoken').value = authtoken
 			document.querySelector('#button').onclick = generateInvoice
 			document.querySelector('#clear').onclick = requestClearInvoice
+			if (onchainAddr) {
+				switchToBtcBtn = document.querySelector('#btn_switch_to_btc')
+				switchToBtcBtn.parentElement.style.display = ""
+				switchToBtcBtn.onclick = switchToBtc
+
+				switchToLnBtnContainer = document.querySelector('#ln_foot')
+				switchToLnBtnContainer.style.display = ""
+				switchToLnBtn = document.querySelector('#btn_switch_to_ln')
+				switchToLnBtn.onclick = switchToLn
+
+				var qrcode = new QRCode('btc_qrcode', {
+						text: onchainAddr,
+						width: 256,
+						height: 256,
+						colorDark : "#000000",
+						colorLight : "#ffffff",
+						correctLevel : QRCode.CorrectLevel.H
+				});
+
+			}
+		}
+
+		function switchToBtc() {
+			console.log('this happen.')
+			document.querySelector('#ln_container').style.display = 'none'
+			document.querySelector('#btc_container').style.display = ''
+		}
+		function switchToLn() {
+			document.querySelector('#ln_container').style.display = ''
+			document.querySelector('#btc_container').style.display = 'none'
 		}
 
 		var invoiceInProgress = false
@@ -336,37 +374,65 @@
 	<script type="text/javascript" src="./qrcode.min.js"></script><!-- note this is the KeeeX/qrcodejs version since the original maintainer went away and the code had bugs! -->
 </head>
 <body>
+	<!-- <H2><span id="ln_mode">BTC Via Lightning</span>&nbsp;-&nbsp;<span id="btc_mode" style="display: none;">BTC Direct</span></H2> -->
 
-	<table>
-	<input type="hidden" id="authtoken">
-	<tr><td id="lbl_amount">Satoshis Amount</td><td><input id="amount" name="amount"></td></tr>
-	<!-- <tr><td id="lbl_earmark">Earmark? (optional)</td><td><input id="earmark" name="earmark"></td></tr> -->
-	<tr><td id="lbl_earmark">Earmark?</td><td>
-		<select name="earmark" id="earmark">
-			<option value="outreach">Homeless Outreach</option>
-			<option value="beach">Beach Cleanup</option>
-			<option value="crypto_edu">Cryptocurrency Education</option>
-			<option value="infotech_edu">InfoTech and Computer Education</option>
-			<option value="marketing">Messaging and Promotion</option>
-			<option value="admin">Administration</option>
-			<option value="skunkworks">Shadow Operations/Skunk Works</option>
-		</select>
-	</td></tr>
-	<tr><td id="lbl_btn">&nbsp;</td><td><button id="button" disabled=true>Generate Invoice</button><button id="clear" style="display:none">Clear Invoice</button></td></tr>
-	</table>
-	
-	<!-- <button id="button" onclick="testPollForPayment()">Test</button> -->
-	<div id="honkler" style="width: 350px; text-align: center; display:none">
-		<img src="./ezgif-7-51de8928459c.gif" style="display: inline-block;">
+	<div id="ln_container" style="width: 350px;">
+		<div id="ln_hdg" style="text-align: center;">
+			<h1>Send Lightning Network BTC:</h1>
+		</div>
+
+		<table>
+		<input type="hidden" id="authtoken">
+		<tr><td id="lbl_amount">Satoshis Amount</td><td><input id="amount" name="amount"></td></tr>
+		<!-- <tr><td id="lbl_earmark">Earmark? (optional)</td><td><input id="earmark" name="earmark"></td></tr> -->
+		<tr><td id="lbl_earmark">Earmark?</td><td>
+			<select name="earmark" id="earmark">
+				<option value="outreach">Homeless Outreach</option>
+				<option value="beach">Beach Cleanup</option>
+				<option value="crypto_edu">Cryptocurrency Education</option>
+				<option value="infotech_edu">InfoTech and Computer Education</option>
+				<option value="marketing">Messaging and Promotion</option>
+				<option value="admin">Administration</option>
+				<option value="skunkworks">Shadow Operations/Skunk Works</option>
+			</select>
+		</td></tr>
+		<tr>
+			<td id="lbl_btn">&nbsp;</td>
+			<td>
+				<div id="ln_btns_container">
+					<button id="button" disabled=true>Generate Invoice</button><button id="clear" style="display:none">Clear Invoice</button>
+				</div>
+			</td>
+		</tr>
+		</table>
+		
+		<!-- <button id="button" onclick="testPollForPayment()">Test</button> -->
+		<div id="honkler" style="width: 350px; text-align: center; display:none">
+			<img src="./ezgif-7-51de8928459c.gif" style="display: inline-block;">
+		</div>
+		<div id="qrcode-container" style="width: 350px; text-align: center;">
+			<div id="qrcode-center" style="display:inline-block">
+				<div id="qrcode" style="margin-top:15px; display: none"></div>
+			</div>
+		</div>
+		<p style="width: 350px; overflow-wrap: break-word; font-family: monospace" id="payreq"></p>
+
+		<div id="ln_foot" style="text-align: center; display: none;">
+			<h2><a href="javascript:void(0)" id="btn_switch_to_btc">Switch to On-Chain</a></h2>
+		</div>
+
 	</div>
-	<div id="qrcode-container" style="width: 350px; text-align: center;">
+
+	<div id="btc_container" style="width: 350px; text-align: center; display: none">
+		<h1>Send On-Chain BTC:</h1>
 		<div id="qrcode-center" style="display:inline-block">
-			<div id="qrcode" style="margin-top:15px; display: none"></div>
+			<div id="btc_qrcode" style="margin-top:15px;"></div>
+		</div>
+
+		<div id="btc_foot" style="text-align: center;">
+			<h2><a href="javascript:void(0)" id="btn_switch_to_ln">Switch to LN</a></h2>
 		</div>
 	</div>
-	<p style="width: 350px; overflow-wrap: break-word; font-family: monospace" id="payreq"></p>
-</p>	
-
-
+	
 </body>
 </html>

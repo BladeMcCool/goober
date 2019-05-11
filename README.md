@@ -13,7 +13,7 @@ In order for you to actually be able to get paid your lnd needs to have open inc
 clone the repo, build the code (go build or run the included ./buildrun shellscript), run goober under supervisord or screen or similar to daemonize it. reverse proxy to it from your website. symlink to the web dir from your html doc root so you can go to yoursite/something/index.html and get the web/index.html and its assets.
 
 ## What's with that configuration?
-the sample config file needs to have proper values put it in and rename to goober.conf.yaml, it looks for it in the current working directory. goober is presently hardcoded to run on port 8081. you will need to put your recaptcha v3 site key and secret in the config file as well since they are needed for the mandatory built in anti bot protection.
+the sample config file needs to have proper values put it in and rename to goober.conf.yaml, it looks for it in the current working directory. Goober will listen on port 8081 by default but this can be changed in the config file. You will need to put your recaptcha v3 site key and secret in the config file as well since they are needed for the mandatory built in anti bot protection. you can also allow a regular btc donation option by putting a btc address in the config file onChainBTCAddr setting.
 
 ## Anything interesting to know about reverse proxying to goober?
 one of the methods is a long poller, designed to go up to 300 sec before timing out and the client will restablish until such time as they close their browser or pay the invoice. keeping the gateway to the backend open for that long required overriding nginx defaults like so:
