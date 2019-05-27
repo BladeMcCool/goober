@@ -1,0 +1,9 @@
+recaptchaSecret: 6LdilaAUAAAAAAd9IVboutYpOXlLBlRL8j_cZQfQ
+recaptchaSiteKey: 6LdilaAUAAAAAC5xBxHpoaZ7h3gqEXsTZdY0nkfc
+sessAuthKey: 7byxUKhmYA0iV6H8cuBeyRq9GjQ7GtHU
+sessCipher: YL7dCnxFu5jgir6F
+lndRpcHostPort: 192.168.1.103:10009
+lndMacaroonPath: /root/invoice.macaroon
+lndTlsCertPath: /root/tls.cert
+listenPort: 8081
+onChainBTCAddr: 3NtaqvR5CQXFkYB8RzyNYQyay5EVg5kdWW
