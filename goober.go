@@ -75,7 +75,7 @@ func (c *conf) getConf() *conf {
 		c.LndRpcHostPort = "localhost:10009"
 	}
 	if c.RestartFile == "" {
-		c.RestartFile = "/shared/gooberbin/restart"
+		c.RestartFile = "/shared/goober/restart"
 	}
 	return c
 }
