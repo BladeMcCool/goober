@@ -1,0 +1,46 @@
+#note, key create and encrypt notes can be found in here https://gist.github.com/jesgs/7815f791c98ea2f3e82c51f5c66b6ce1 but recall this set for goober is just copies of what was made for ReactResume
+language: go
+go:
+- "1.12"
+dist: xenial
+services:
+  - docker
+sudo: false
+addons:
+  ssh_known_hosts:
+  - chws.ca
+before_install:
+- openssl aes-256-cbc -K $encrypted_db28af1a7c5c_key -iv $encrypted_db28af1a7c5c_iv -in .travis/deploy_rsa.enc -out .travis/deploy_rsa -d
+- openssl aes-256-cbc -K $encrypted_552af73186a2_key -iv $encrypted_552af73186a2_iv -in docker/config/invoice.macaroon.enc -out invoice.macaroon -d
+- eval "$(ssh-agent -s)"
+- cp .travis/deploy_rsa ~/.ssh/deploy_rsa
+- chmod 600 ~/.ssh/deploy_rsa
+- ssh-add ~/.ssh/deploy_rsa
+- echo -e "Host chws.ca\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+
+before_script:
+  - mkdir -p ~/docker-images
+  - [[ -f ~/docker-images/goober-buildenv.tgz ]] && docker load -i ~/docker-images/goober-buildenv.tgz
+  # or: - docker pull casperdcl/testenv
+  - docker build -t goober-buildenv ./docker
+  - docker save goober-buildenv | gzip -c > ~/docker-images/goober-buildenv.tgz
+  # or: - echo "$DOCKER_PASSWORD" | docker login -u casperdcl --password-stdin
+  # - docker push casperdcl/testenv
+
+script:
+  - docker run -id --name goober-buildenv goober-buildenv
+  - docker exec -it goober-buildenv /bin/bash -c "go build"
+  - docker cp goober-buildenv:/go/src/github.com/BladeMcCool/goober/goober ./goober
+  - docker cp goober-buildenv:/go/src/github.com/BladeMcCool/goober/web ./
+  - ls -l
+
+deploy:
+- provider: script
+  skip_cleanup: true
+  script: ".travis/deploy.sh"
+  on:
+    branch: master
+
+cache:
+  directories:
+    ~/docker-images

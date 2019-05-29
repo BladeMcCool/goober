@@ -24,8 +24,6 @@ import (
 	"github.com/syntaqx/echo-middleware/requestid"
 )
 
-// var sessStoar *sessions.CookieStore
-// var recaptchaSecret, authKey, encryptKey string
 var letterRunes = []rune("01234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
 //RandString make random strings of runes in n length, if that wasnt completely obvious.
@@ -47,6 +45,7 @@ type conf struct {
 	LndRpcHostPort   string `yaml:"lndRpcHostPort"`
 	ListenPort       string `yaml:"listenPort"`
 	OnChainBTCAddr   string `yaml:"onChainBTCAddr"`
+	RestartFile      string `yaml:"restartFile"`
 }
 
 func (c *conf) getConf() *conf {
@@ -75,14 +74,13 @@ func (c *conf) getConf() *conf {
 	if c.LndRpcHostPort == "" {
 		c.LndRpcHostPort = "localhost:10009"
 	}
+	if c.RestartFile == "" {
+		c.RestartFile = "/shared/gooberbin/restart"
+	}
 	return c
 }
 
 var myConf conf
-
-// var lnConn *grpc.ClientConn
-
-// var sessMgr = &sessionManager{}
 var sessMgr *sessionManager
 var ln *lndHelper
 var captcha *recaptchaHelper
@@ -93,13 +91,10 @@ func init() {
 
 	myConf.getConf()
 	fmt.Printf("read config: %#vn\n", myConf)
+	go monitorShutdown(&myConf)
 	sessMgr = NewSessMgr(&myConf)
 	ln = NewLNDHelper(&myConf)
 	captcha = NewRecaptchaHelper(&myConf, sessMgr)
-
-	// sessStoar = sessions.NewCookieStore([]byte(myConf.SessAuthKey), []byte(myConf.SessCipher)) //these should be random and not saved in this file. oh well. see docs for more info.
-
-	// lnClient = client
 	go ln.MonitorInvoices()
 }
 
@@ -110,7 +105,6 @@ func main() {
 	r := mux.NewRouter()
 	rid := requestid.New()
 	reqIdKey = rid.HeaderKey
-	// r.
 	_ = r
 	r.HandleFunc("/getRecaptchaSiteKey/", getRecaptchaSiteKey)
 	r.HandleFunc("/getInvoiceForm/", getInvoiceForm)
@@ -315,4 +309,19 @@ func longPollInvoice(w http.ResponseWriter, r *http.Request) {
 	log.Printf("longPollInvoice: reqId %s got down here.", reqId)
 
 	sendJSON(w, result)
+}
+
+func monitorShutdown(conf *conf) {
+	for {
+		if _, err := os.Stat(conf.RestartFile); os.IsNotExist(err) {
+			time.Sleep(5 * time.Second)
+			continue
+		}
+		log.Printf("monitorShutdown: presence of restart file detected at %s, removing it and exiting.", conf.RestartFile)
+		if err := os.Remove(conf.RestartFile); err != nil {
+			log.Printf("monitorShudown: error trying to remove restart file.")
+			panic("that is bad.")
+		}
+		os.Exit(0)
+	}
 }
