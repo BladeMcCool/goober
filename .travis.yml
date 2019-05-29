@@ -1,7 +1,5 @@
 #note, key create and encrypt notes can be found in here https://gist.github.com/jesgs/7815f791c98ea2f3e82c51f5c66b6ce1 but recall this set for goober is just copies of what was made for ReactResume
-language: go
-go:
-- "1.12"
+language: minimal
 dist: xenial
 services:
   - docker
@@ -20,7 +18,7 @@ before_install:
 
 before_script:
   - mkdir -p ~/docker-images
-  - "[ -f ~/docker-images/goober-buildenv.tgz ] && docker load -i ~/docker-images/goober-buildenv.tgz"
+  - if [ -f ~/docker-images/goober-buildenv.tgz ]; then docker load -i ~/docker-images/goober-buildenv.tgz; fi
   # or: - docker pull casperdcl/testenv
   - docker build -t goober-buildenv ./docker
   - docker save goober-buildenv | gzip -c > ~/docker-images/goober-buildenv.tgz
