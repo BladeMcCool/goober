@@ -1,8 +1,10 @@
 #note, key create and encrypt notes can be found in here https://gist.github.com/jesgs/7815f791c98ea2f3e82c51f5c66b6ce1 but recall this set for goober is just copies of what was made for ReactResume
-language: minimal
+language: go
+go:
+- "1.12"
 dist: xenial
-services:
-  - docker
+# services:
+#   - docker
 sudo: false
 addons:
   ssh_known_hosts:
@@ -16,23 +18,10 @@ before_install:
 - ssh-add ~/.ssh/deploy_rsa
 - echo -e "Host chws.ca\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
 
-before_script:
-  - mkdir -p ~/docker-images
-  - if [ -f ~/docker-images/goober-buildenv.tgz ]; then docker load -i ~/docker-images/goober-buildenv.tgz; fi
-  # or: - docker pull casperdcl/testenv
-  - docker build -t goober-buildenv ./docker
-  - docker save goober-buildenv | gzip -c > ~/docker-images/goober-buildenv.tgz
-  # or: - echo "$DOCKER_PASSWORD" | docker login -u casperdcl --password-stdin
-  # - docker push casperdcl/testenv
-
 script:
-  - docker --version
-  - docker run -id --name goober-buildenv goober-buildenv /bin/bash
-  - docker exec -it goober-buildenv /bin/bash -c "pwd"
-  - docker exec -it goober-buildenv /bin/bash -c "go build"
-  - docker cp goober-buildenv:/go/src/github.com/BladeMcCool/goober/goober ./goober
-  - docker cp goober-buildenv:/go/src/github.com/BladeMcCool/goober/web ./
-  - ls -l
+  # note, at the time of this writing i have no tests in this thing. all it does is integrate with stuff so not sure what kind of test i'd write.
+  - go test -v ./...
+  - go build
 
 deploy:
 - provider: script
@@ -40,7 +29,3 @@ deploy:
   script: ".travis/deploy.sh"
   on:
     branch: master
-
-cache:
-  directories:
-    ~/docker-images
