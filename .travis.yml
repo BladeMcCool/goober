@@ -26,7 +26,9 @@ before_script:
   # - docker push casperdcl/testenv
 
 script:
-  - docker run -id --name goober-buildenv goober-buildenv
+  - docker --version
+  - docker run -id --name goober-buildenv goober-buildenv /bin/bash
+  - docker exec -it goober-buildenv /bin/bash -c "pwd"
   - docker exec -it goober-buildenv /bin/bash -c "go build"
   - docker cp goober-buildenv:/go/src/github.com/BladeMcCool/goober/goober ./goober
   - docker cp goober-buildenv:/go/src/github.com/BladeMcCool/goober/web ./
