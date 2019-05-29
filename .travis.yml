@@ -20,7 +20,7 @@ before_install:
 
 before_script:
   - mkdir -p ~/docker-images
-  - [[ -f ~/docker-images/goober-buildenv.tgz ]] && docker load -i ~/docker-images/goober-buildenv.tgz
+  - "[ -f ~/docker-images/goober-buildenv.tgz ] && docker load -i ~/docker-images/goober-buildenv.tgz"
   # or: - docker pull casperdcl/testenv
   - docker build -t goober-buildenv ./docker
   - docker save goober-buildenv | gzip -c > ~/docker-images/goober-buildenv.tgz
