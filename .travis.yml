@@ -37,6 +37,8 @@ deploy:
 
 cache:
   directories:
+    - $GOPATH/bin
+    - $GOPATH/pkg
     - $GOPATH/src
-    # - $HOME/.cache/go-build
+    - $HOME/.cache/go-build
     # - $HOME/gopath/pkg/mod    
