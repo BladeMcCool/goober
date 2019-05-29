@@ -18,10 +18,15 @@ before_install:
 - ssh-add ~/.ssh/deploy_rsa
 - echo -e "Host chws.ca\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
 
+before_script:
+  - printenv
+  - ls -l $GOPATH/src/
+
 script:
   # note, at the time of this writing i have no tests in this thing. all it does is integrate with stuff so not sure what kind of test i'd write.
   - go test -v ./...
   - go build
+  - touch restart
 
 deploy:
 - provider: script
@@ -29,3 +34,9 @@ deploy:
   script: ".travis/deploy.sh"
   on:
     branch: master
+
+cache:
+  directories:
+    - $GOPATH/src
+    # - $HOME/.cache/go-build
+    # - $HOME/gopath/pkg/mod    
