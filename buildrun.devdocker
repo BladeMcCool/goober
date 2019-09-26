@@ -1,0 +1,14 @@
+go build
+rc=$?; if [[ $rc != 0 ]]; then 
+ echo "------------------------------"
+ echo "           problem"
+ echo "------------------------------"
+ exit
+fi
+echo "no compile problem, touching restart file and copying binary+restart file to dev docker host via dev docker ssh service ..."
+scp -C -P 10022 -i ~/work/ReactResume/.travis/deploy_rsa goober goober@192.168.1.96:/shared/goober/
+
+touch ./restart
+scp -C -P 10022 -i ~/work/ReactResume/.travis/deploy_rsa restart goober@192.168.1.96:/shared/goober/
+rm ./restart
+

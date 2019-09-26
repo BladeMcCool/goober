@@ -9,10 +9,14 @@ RUN apt-get install -y rsync
 # ADD http://api.github.com/repos/BladeMcCool/goober/git/refs/heads/master ./version.json
 #fun fact, travis CI basically permanently rated limited on api.github.com :) and i dont feel like trying to sort out an 'authenticated' request so i'm going to proxy using my own server. cheesy.
 ADD http://chws.ca/goober-git-version ./version.json
+ADD http://chws.ca/goober-git-version ./wot2
 RUN rm ./version.json
 RUN git pull
 
 RUN go build
+
+#run some cmd to invalide cache if you want to re-copy config. there has to be a better way to do this.
+RUN pwd
 COPY ./config/* ./ 
 
 EXPOSE 8081

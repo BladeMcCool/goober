@@ -20,11 +20,21 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/go-pg/pg"
 	"github.com/gorilla/mux"
 	"github.com/syntaqx/echo-middleware/requestid"
 )
 
 var letterRunes = []rune("01234567890abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+var earmarkOptions = [][2]string{
+	{"outreach", "Homeless Outreach"},
+	{"beach", "Beach Cleanup"},
+	{"crypto_edu", "Cryptocurrency Education"},
+	{"infotech_edu", "InfoTech and Computer Education"},
+	{"marketing", "Messaging and Promotion"},
+	{"admin", "Administration"},
+	{"skunkworks", "Shadow Operations/Skunk Works"},
+}
 
 //RandString make random strings of runes in n length, if that wasnt completely obvious.
 func RandString(n int) string {
@@ -46,6 +56,8 @@ type conf struct {
 	ListenPort       string `yaml:"listenPort"`
 	OnChainBTCAddr   string `yaml:"onChainBTCAddr"`
 	RestartFile      string `yaml:"restartFile"`
+	PgHost           string `yaml:"pgHost"`
+	PgPass           string `yaml:"pgPass"`
 }
 
 func (c *conf) getConf() *conf {
@@ -90,11 +102,16 @@ func init() {
 	rand.Seed(time.Now().UnixNano())
 
 	myConf.getConf()
+	fmt.Println("test message please ignore.")
 	fmt.Printf("read config: %#vn\n", myConf)
 	go monitorShutdown(&myConf)
 	sessMgr = NewSessMgr(&myConf)
 	ln = NewLNDHelper(&myConf)
 	captcha = NewRecaptchaHelper(&myConf, sessMgr)
+
+	fmt.Println("see TODOs in code!! (re saving paid invoice info into postgres)")
+	// DbTest()
+
 	go ln.MonitorInvoices()
 }
 
@@ -123,6 +140,27 @@ func main() {
 		panic(err)
 	}
 }
+func DbTest() {
+	db := pg.Connect(&pg.Options{
+		Addr:     myConf.PgHost + ":5432",
+		User:     "postgres",
+		Password: myConf.PgPass,
+		Database: "postgres",
+	})
+
+	var horselegs struct {
+		Legs int
+	}
+
+	res, err := db.QueryOne(&horselegs, `SELECT * FROM horse`)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(res.RowsAffected())
+	fmt.Println(horselegs)
+
+	defer db.Close()
+}
 func getRecaptchaSiteKey(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(myConf.RecaptchaSiteKey))
 	return
@@ -141,7 +179,7 @@ func getInvoiceForm(w http.ResponseWriter, r *http.Request) {
 	userSess.Save(r, w)
 	log.Printf("getInvoiceForm: session data currently: %#v", userSess.Values)
 
-	resp, err := json.Marshal([]interface{}{true, rando, myConf.OnChainBTCAddr})
+	resp, err := json.Marshal([]interface{}{true, rando, myConf.OnChainBTCAddr, earmarkOptions})
 	if err != nil {
 		fmt.Println(err.Error())
 	}
@@ -161,6 +199,7 @@ func getInvoice(w http.ResponseWriter, r *http.Request) {
 	gotToken, haveParamToken := params["authtoken"].(string)
 	amountFloat, _ := params["amount"].(float64)
 	earmark, _ := params["earmark"].(string)
+	attribution, _ := params["attribution"].(string)
 	amount := int64(amountFloat)
 	if amount == 0 {
 		amount = 1
@@ -185,12 +224,24 @@ func getInvoice(w http.ResponseWriter, r *http.Request) {
 
 	memo := "CHWS Donation"
 	if earmark != "" {
-		memo = memo + ", Earmarked for " + earmark
+		earmarkChosenOpt := 0
+		for ind, option := range earmarkOptions {
+			if option[0] == earmark {
+				earmarkChosenOpt = ind
+				break
+			}
+		}
+		memo = memo + ", Earmarked for " + earmarkOptions[earmarkChosenOpt][1]
+	}
+	if attribution != "" {
+		memo = memo + ", Attribution: " + attribution
 	}
 	addInvoiceResp := ln.NewInvoiceFromLND(amount, memo)
 	sess := sessMgr.GetSession(r)
 	sess.Values["invoice-payreq"] = addInvoiceResp.PaymentRequest
 	sess.Values["invoice-rhash"] = hex.EncodeToString(addInvoiceResp.RHash)
+	sess.Values["invoice-earmark"] = earmark
+	sess.Values["invoice-attribution"] = attribution
 	sess.Save(r, w)
 
 	log.Printf("clearly had a good enough score: %f\n", score)
@@ -301,6 +352,17 @@ func longPollInvoice(w http.ResponseWriter, r *http.Request) {
 		// case <-ln.RhashSettlements[rhash][reqId]:
 		result["gotresult"] = true
 		result["settled"] = true
+
+		//TODO: call something to save the saved invoice data in the pg db, passing the session data map.
+		// in there it must pull out fields like:
+		//   sess.Values["invoice-earmark"].(string)
+		//   sess.Values["invoice-attribution"].(string)
+		//   sess.Values["invoice-rhash"].(string)
+		//   sess.Values["invoice-payreq"].(string)
+		// and save them into a record.
+		// db conn should be established on startup in init
+		// db teardown should be defered in main.
+
 		log.Printf("longPollInvoice: reqId %s got a result like: %#v\n", reqId, result)
 	case <-ctx.Done():
 		result["timedout"] = true

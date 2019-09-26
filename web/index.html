@@ -89,9 +89,11 @@
 		function showForm(params) {
 			authtoken = params[1]
 			onchainAddr = params[2]
+			earmarkOptions = params[3]
 			document.querySelector('#authtoken').value = authtoken
 			document.querySelector('#button').onclick = generateInvoice
 			document.querySelector('#clear').onclick = requestClearInvoice
+			fillFormEarmarks(earmarkOptions)
 			if (onchainAddr) {
 				switchToBtcBtn = document.querySelector('#btn_switch_to_btc')
 				switchToBtcBtn.parentElement.style.display = ""
@@ -111,6 +113,17 @@
 						correctLevel : QRCode.CorrectLevel.H
 				});
 				document.querySelector('#btc_addr').innerText = onchainAddr
+			}
+		}
+
+		function fillFormEarmarks(earmarkOptions) {
+			var earmarkSelect = document.querySelector('#earmark')
+			console.log("earmark options: ", JSON.stringify(earmarkOptions))
+			for (option of earmarkOptions) {
+				var opt = document.createElement("option")
+				opt.value = option[0]
+				opt.text = option[1]
+				earmarkSelect.appendChild(opt)
 			}
 		}
 
@@ -172,7 +185,7 @@
 				console.log("generateInvoice: aborting due to belief that prior one is already in progress.")
 				return
 			}
-			flds = ['authtoken','earmark','amount']
+			flds = ['authtoken','earmark','amount','attribution']
 			rules = {
 				'amount':'required,int',
 				'authtoken':'required',
@@ -189,36 +202,38 @@
 				}
 				console.log(`fld ${fld} value is ${submit[fld]}`)
 
-				if (rules[fld]) {
-					fldRules = rules[fld].split(',')
-					for (rule of fldRules) {
-						if (rule == 'required' && !submit[fld]) {
-							valid = false
-							break
-						}
-						if (rule == 'int') {
-							submit[fld] = parseInt(submit[fld])
-						}
-						if (rule == 'int' && !(submit[fld] > 0)) {
-							valid = false
-							break
-						}
-					}
-					if (!valid) {
-						allValid = false
-					}
-
-					fldLbl = document.querySelector(`#lbl_${fld}`)
-					if (!fldLbl) {
-						continue
-					}
-
-					setColor = ""
-					if (!valid) {
-						setColor = 'red'
-					}
-					fldLbl.style.color = setColor
+				if (!rules[fld]) {
+					continue
 				}
+
+				fldRules = rules[fld].split(',')
+				for (rule of fldRules) {
+					if (rule == 'required' && !submit[fld]) {
+						valid = false
+						break
+					}
+					if (rule == 'int') {
+						submit[fld] = parseInt(submit[fld])
+					}
+					if (rule == 'int' && !(submit[fld] > 0)) {
+						valid = false
+						break
+					}
+				}
+				if (!valid) {
+					allValid = false
+				}
+
+				fldLbl = document.querySelector(`#lbl_${fld}`)
+				if (!fldLbl) {
+					continue
+				}
+
+				setColor = ""
+				if (!valid) {
+					setColor = 'red'
+				}
+				fldLbl.style.color = setColor
 			}
 			// allValid = false
 			if (!allValid) {
@@ -384,9 +399,12 @@
 		<table>
 		<input type="hidden" id="authtoken">
 		<tr><td id="lbl_amount">Satoshis Amount</td><td><input id="amount" name="amount"></td></tr>
+		<tr><td id="lbl_attribution">Attribution Memo?</td><td><input id="attribution" name="attribution"></td></tr>
 		<!-- <tr><td id="lbl_earmark">Earmark? (optional)</td><td><input id="earmark" name="earmark"></td></tr> -->
 		<tr><td id="lbl_earmark">Earmark?</td><td>
 			<select name="earmark" id="earmark">
+				<!-- the options below have been moved to the code itself for now, with eventual plans to be set in the database -->
+				<!--
 				<option value="outreach">Homeless Outreach</option>
 				<option value="beach">Beach Cleanup</option>
 				<option value="crypto_edu">Cryptocurrency Education</option>
@@ -394,6 +412,7 @@
 				<option value="marketing">Messaging and Promotion</option>
 				<option value="admin">Administration</option>
 				<option value="skunkworks">Shadow Operations/Skunk Works</option>
+				-->
 			</select>
 		</td></tr>
 		<tr>
