@@ -20,7 +20,6 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/go-pg/pg"
 	"github.com/gorilla/mux"
 	"github.com/syntaqx/echo-middleware/requestid"
 )
@@ -96,6 +95,7 @@ var myConf conf
 var sessMgr *sessionManager
 var ln *lndHelper
 var captcha *recaptchaHelper
+var pgConn *postgresHelper
 
 func init() {
 	log.SetOutput(os.Stdout)
@@ -111,14 +111,45 @@ func init() {
 
 	fmt.Println("see TODOs in code!! (re saving paid invoice info into postgres)")
 	// DbTest()
+	pgConn = NewPostgresHelper(&myConf)
 
 	go ln.MonitorInvoices()
 }
 
 var reqIdKey string
+var quitChan = make(chan struct{})
 
 func main() {
+	defer pgConn.closeDb()
 
+	// r := mux.NewRouter()
+	// rid := requestid.New()
+	// reqIdKey = rid.HeaderKey
+	// _ = r
+	// r.HandleFunc("/getRecaptchaSiteKey/", getRecaptchaSiteKey)
+	// r.HandleFunc("/getInvoiceForm/", getInvoiceForm)
+	// r.HandleFunc("/getInvoice/", getInvoice)
+	// r.HandleFunc("/lastInvoice/", lastInvoice)
+	// r.HandleFunc("/pollInvoice/", pollInvoice)
+	// r.HandleFunc("/longPollInvoice/", longPollInvoice)
+	// // http.HandleFunc("/", sayHello)
+	// // http.HandleFunc("/bye/", sayBye)
+	// // if err := http.ListenAndServe(":8081", nil); err != nil {}
+	// listenPort := myConf.ListenPort
+	// if listenPort == "" {
+	// 	listenPort = "8081"
+	// }
+	// if err := http.ListenAndServe(":"+listenPort, rid.Handler(r)); err != nil {
+	// 	panic(err)
+	// }
+	srv := startServer()
+	_ = srv
+	log.Printf("waiting to be told to quit listening.")
+	_ = <-quitChan
+	log.Printf("QUITTING TIME.")
+}
+
+func startServer() *http.Server {
 	r := mux.NewRouter()
 	rid := requestid.New()
 	reqIdKey = rid.HeaderKey
@@ -136,31 +167,42 @@ func main() {
 	if listenPort == "" {
 		listenPort = "8081"
 	}
-	if err := http.ListenAndServe(":"+listenPort, rid.Handler(r)); err != nil {
-		panic(err)
+	srv := &http.Server{
+		Addr:    ":" + listenPort,
+		Handler: rid.Handler(r),
 	}
+	// if err := http.ListenAndServe(":"+listenPort, rid.Handler(r)); err != nil {
+	// 	panic(err)
+	// }
+	go func() {
+		if err := srv.ListenAndServe(); err != nil {
+			panic(err)
+		}
+	}()
+	return srv
 }
-func DbTest() {
-	db := pg.Connect(&pg.Options{
-		Addr:     myConf.PgHost + ":5432",
-		User:     "postgres",
-		Password: myConf.PgPass,
-		Database: "postgres",
-	})
 
-	var horselegs struct {
-		Legs int
-	}
+// func DbTest() {
+// 	db := pg.Connect(&pg.Options{
+// 		Addr:     myConf.PgHost + ":5432",
+// 		User:     "postgres",
+// 		Password: myConf.PgPass,
+// 		Database: "postgres",
+// 	})
 
-	res, err := db.QueryOne(&horselegs, `SELECT * FROM horse`)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(res.RowsAffected())
-	fmt.Println(horselegs)
+// 	var horselegs struct {
+// 		Legs int
+// 	}
 
-	defer db.Close()
-}
+// 	res, err := db.QueryOne(&horselegs, `SELECT * FROM horse`)
+// 	if err != nil {
+// 		panic(err)
+// 	}
+// 	fmt.Println(res.RowsAffected())
+// 	fmt.Println(horselegs)
+
+// 	defer db.Close()
+// }
 func getRecaptchaSiteKey(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(myConf.RecaptchaSiteKey))
 	return
@@ -240,6 +282,7 @@ func getInvoice(w http.ResponseWriter, r *http.Request) {
 	sess := sessMgr.GetSession(r)
 	sess.Values["invoice-payreq"] = addInvoiceResp.PaymentRequest
 	sess.Values["invoice-rhash"] = hex.EncodeToString(addInvoiceResp.RHash)
+	sess.Values["invoice-sats"] = amount
 	sess.Values["invoice-earmark"] = earmark
 	sess.Values["invoice-attribution"] = attribution
 	sess.Save(r, w)
@@ -274,6 +317,9 @@ func lastInvoice(w http.ResponseWriter, r *http.Request) {
 		payreq = ""
 		delete(sess.Values, "invoice-rhash")
 		delete(sess.Values, "invoice-payreq")
+		delete(sess.Values, "invoice-sats")
+		delete(sess.Values, "invoice-earmark")
+		delete(sess.Values, "invoice-attribution")
 		sess.Save(r, w)
 	}
 
@@ -359,6 +405,7 @@ func longPollInvoice(w http.ResponseWriter, r *http.Request) {
 		//   sess.Values["invoice-attribution"].(string)
 		//   sess.Values["invoice-rhash"].(string)
 		//   sess.Values["invoice-payreq"].(string)
+		pgConn.savePaidInvoiceDetail(sess.Values)
 		// and save them into a record.
 		// db conn should be established on startup in init
 		// db teardown should be defered in main.
@@ -384,6 +431,7 @@ func monitorShutdown(conf *conf) {
 			log.Printf("monitorShudown: error trying to remove restart file.")
 			panic("that is bad.")
 		}
-		os.Exit(0)
+		// os.Exit(0)
+		quitChan <- struct{}{}
 	}
 }
