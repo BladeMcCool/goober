@@ -26,6 +26,7 @@ script:
   # note, at the time of this writing i have no tests in this thing. all it does is integrate with stuff so not sure what kind of test i'd write.
   - go test -v ./...
   - go build
+  - sha1sum goober
   - touch restart
 
 deploy:
