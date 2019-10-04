@@ -100,7 +100,6 @@ var pgConn *postgresHelper
 func init() {
 	log.SetOutput(os.Stdout)
 	rand.Seed(time.Now().UnixNano())
-	xx
 	myConf.getConf()
 	fmt.Println("!!!test message please ignore.")
 	fmt.Printf("read config: %#vn\n", myConf)
