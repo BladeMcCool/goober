@@ -102,7 +102,7 @@ func init() {
 	rand.Seed(time.Now().UnixNano())
 
 	myConf.getConf()
-	fmt.Println("test message please ignore.")
+	fmt.Println("!!!test message please ignore.")
 	fmt.Printf("read config: %#vn\n", myConf)
 	go monitorShutdown(&myConf)
 	sessMgr = NewSessMgr(&myConf)
