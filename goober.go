@@ -34,6 +34,7 @@ var earmarkOptions = [][2]string{
 	{"admin", "Administration"},
 	{"skunkworks", "Shadow Operations/Skunk Works"},
 }
+var leaderBoard []LeaderBoardRow
 
 //RandString make random strings of runes in n length, if that wasnt completely obvious.
 func RandString(n int) string {
@@ -103,15 +104,13 @@ func init() {
 	myConf.getConf()
 	fmt.Println("!!!test message please ignore.")
 	fmt.Printf("read config: %#vn\n", myConf)
-	go monitorShutdown(&myConf)
 	sessMgr = NewSessMgr(&myConf)
 	ln = NewLNDHelper(&myConf)
 	captcha = NewRecaptchaHelper(&myConf, sessMgr)
-
-	fmt.Println("see TODOs in code!! (re saving paid invoice info into postgres)")
-	// DbTest()
 	pgConn = NewPostgresHelper(&myConf)
 
+	go monitorShutdown(&myConf)
+	go refreshLeaderBoard()
 	go ln.MonitorInvoices()
 }
 
@@ -141,6 +140,8 @@ func main() {
 	// if err := http.ListenAndServe(":"+listenPort, rid.Handler(r)); err != nil {
 	// 	panic(err)
 	// }
+	// _ = pgConn.getLeaderBoard()
+
 	srv := startServer()
 	_ = srv
 	log.Printf("waiting to be told to quit listening.")
@@ -156,6 +157,7 @@ func startServer() *http.Server {
 	r.HandleFunc("/getRecaptchaSiteKey/", getRecaptchaSiteKey)
 	r.HandleFunc("/getInvoiceForm/", getInvoiceForm)
 	r.HandleFunc("/getInvoice/", getInvoice)
+	r.HandleFunc("/getLeaderboard/", getLeaderboard)
 	r.HandleFunc("/lastInvoice/", lastInvoice)
 	r.HandleFunc("/pollInvoice/", pollInvoice)
 	r.HandleFunc("/longPollInvoice/", longPollInvoice)
@@ -207,6 +209,14 @@ func getRecaptchaSiteKey(w http.ResponseWriter, r *http.Request) {
 	return
 }
 
+func getLeaderboard(w http.ResponseWriter, r *http.Request) {
+	resp, err := json.Marshal(leaderBoard)
+	if err != nil {
+		fmt.Println(err.Error())
+	}
+	w.Write(resp)
+}
+
 func getInvoiceForm(w http.ResponseWriter, r *http.Request) {
 	if pass, _ := captcha.isUserReal(w, r); !pass {
 		w.Write([]byte(""))
@@ -220,6 +230,7 @@ func getInvoiceForm(w http.ResponseWriter, r *http.Request) {
 	userSess.Save(r, w)
 	log.Printf("getInvoiceForm: session data currently: %#v", userSess.Values)
 
+	// resp, err := json.Marshal([]interface{}{true, rando, myConf.OnChainBTCAddr, earmarkOptions, leaderBoard})
 	resp, err := json.Marshal([]interface{}{true, rando, myConf.OnChainBTCAddr, earmarkOptions})
 	if err != nil {
 		fmt.Println(err.Error())
@@ -432,5 +443,12 @@ func monitorShutdown(conf *conf) {
 		}
 		// os.Exit(0)
 		quitChan <- struct{}{}
+	}
+}
+
+func refreshLeaderBoard() {
+	for {
+		leaderBoard = pgConn.getLeaderBoard()
+		time.Sleep(60 * time.Second)
 	}
 }

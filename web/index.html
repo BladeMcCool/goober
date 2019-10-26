@@ -6,7 +6,9 @@
 	<style type=text/css>
 		h1 { font-family: sans-serif; font-size: 22px; }
 		h2 { font-family: sans-serif; font-size: 16px; }
+		p { font-family: sans-serif; font-size: 12px; }
 		table td { font-family: sans-serif; font-size: 12px; }
+		table { border: 1px solid black; }
 	</style>
  	<script type="text/javascript">
  		recaptcha_sitekey = 'tbd'
@@ -90,6 +92,8 @@
 			authtoken = params[1]
 			onchainAddr = params[2]
 			earmarkOptions = params[3]
+			// leaderBoard = params[4]
+			
 			document.querySelector('#authtoken').value = authtoken
 			document.querySelector('#button').onclick = generateInvoice
 			document.querySelector('#clear').onclick = requestClearInvoice
@@ -379,8 +383,24 @@
 			console.log(`got recaptcha site key of ${recaptcha_sitekey} from the backend`)	
 			injectRecaptchaScript()
 		}
+		loadLeaderboard = function(ldrboardJson) {
+			decoded = JSON.parse(ldrboardJson)
+			console.log("lderboard decoded after load:", decoded)
+			ldrbrd = document.getElementById('ldrboard_container')
+			decoded.forEach(entry => {
+				ptag = document.createElement('p')
+				attributionChopped = entry.Attribution.substr(0, 20)
+				if (attributionChopped.length < entry.Attribution.length) {
+					attributionChopped += '...'
+				}
+				ptag.innerHTML = `${entry.Satstotal} sats: ${entry.Earmark} -> ${attributionChopped}`
+				ldrbrd.appendChild(ptag)
+			})
+
+		}
 		console.log(`to load recaptcha site key ...`)
 		ajax('/backend/getRecaptchaSiteKey/', loadRecaptchaWithSiteKey)
+		ajax('/backend/getLeaderboard/', loadLeaderboard)
 
 		// document.addEventListener('DOMContentLoaded', function () {
 		// 	// dummyShowForm()
@@ -391,7 +411,7 @@
 <body>
 	<!-- <H2><span id="ln_mode">BTC Via Lightning</span>&nbsp;-&nbsp;<span id="btc_mode" style="display: none;">BTC Direct</span></H2> -->
 
-	<div id="ln_container" style="width: 350px;">
+	<div id="ln_container" style="width: 350px; float: left; border: 1px solid black;">
 		<div id="ln_hdg" style="text-align: center;">
 			<h1>Send Lightning Network BTC:</h1>
 		</div>
@@ -424,7 +444,7 @@
 			</td>
 		</tr>
 		</table>
-		
+
 		<!-- <button id="button" onclick="testPollForPayment()">Test</button> -->
 		<div id="honkler" style="width: 350px; text-align: center; display:none">
 			<img src="./ezgif-7-51de8928459c.gif" style="display: inline-block;">
@@ -442,7 +462,7 @@
 
 	</div>
 
-	<div id="btc_container" style="width: 350px; text-align: center; display: none">
+	<div id="btc_container" style="width: 350px; text-align: center; display: none; float: left;">
 		<h1>Send On-Chain BTC:</h1>
 		<div id="qrcode-center" style="display:inline-block">
 			<div id="btc_qrcode" style="margin-top:15px;"></div>
@@ -453,6 +473,12 @@
 			<h2><a href="javascript:void(0)" id="btn_switch_to_ln">Switch to LN</a></h2>
 		</div>
 	</div>
+
 	
+	<div id="ldrboard_container" style="width: 350px; float: left; margin-left: 50px; border: 1px solid;">
+		<h1 style="text-align: center;">Top Donors By Category</h1>
+
+	</div>
+
 </body>
 </html>
